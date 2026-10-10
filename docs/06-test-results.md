@@ -20,6 +20,19 @@ Notes:
 - Scaling at 125% and 150%: the owner saw lifted text jump sideways and an off-centre crop at 150% before the fix above. **Re-check after the fix.** Chromium's `--force-device-scale-factor` flag gives wrong display bounds under Electron (the size is divided by the scale twice), so it cannot stand in for the real Windows setting.
 - Capture is the slowest stage. `desktopCapturer.getSources` takes about 260 ms on this PC against 26 to 99 ms on the Linux display. Worth fixing before the speed targets matter, for example by keeping a capture stream open.
 
+## Selecting pieces (step 1)
+
+Run on 2026-10-10 on the same PC, at 100% scaling, against the sample notes page with synthetic mouse events.
+
+| Test | Result |
+| --- | --- |
+| Two boxes dragged, then Enter, then Esc (`npm run select:auto`) | Both lifted, the page receded, the screen came back byte-for-byte identical |
+| A 4 by 4 box | Ignored |
+| Esc while selecting, with two pieces lifted (`--esc-while-selecting`) | Cancelled and restored byte-for-byte identical |
+| Demo scene and recorder after the change | Unchanged: 32.2 s, 976 frames, restore identical |
+
+Not tested: a real PDF with a real mouse, which is what "done" means for step 1.
+
 ## Linux (first prototype)
 
 Everything below was run on 2026-10-10 on a Linux virtual display at 1440 by 900 with software drawing, using Electron 44.7.0 and KaTeX 0.19.0.

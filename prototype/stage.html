@@ -21,6 +21,11 @@
   #ask { position: absolute; left: 50%; top: 54px; transform: translateX(-50%); font: 16px "DejaVu Sans", "Segoe UI", sans-serif; color: #cfd3dc;
          border: 1px solid rgba(255,255,255,.22); border-radius: 999px; padding: 7px 16px; background: rgba(255,255,255,.06); opacity: 0; white-space: nowrap; }
   #ask b { color: #fff; font-weight: 600; }
+  body.selecting { cursor: crosshair; }
+  #sel { position: absolute; display: none; pointer-events: none; border: 1.5px dashed #fff; background: rgba(88,196,221,.10); box-shadow: 0 0 0 1px rgba(0,0,0,.55), inset 0 0 0 1px rgba(0,0,0,.35); }
+  #hint { position: absolute; left: 50%; top: 22px; transform: translateX(-50%); font: 15px "Segoe UI", "DejaVu Sans", sans-serif; color: #e8eaef; white-space: nowrap;
+          background: rgba(18,20,26,.88); border: 1px solid rgba(255,255,255,.14); border-radius: 999px; padding: 8px 18px; box-shadow: 0 6px 24px rgba(0,0,0,.35); opacity: 0; pointer-events: none; }
+  #hint b { color: #fff; font-weight: 600; }
 </style>
 <img id="shot">
 <div id="veil"></div>
@@ -28,6 +33,8 @@
 <svg id="ink"></svg>
 <div id="ask"></div>
 <div id="caption"></div>
+<div id="sel"></div>
+<div id="hint"></div>
 <script src="../node_modules/katex/dist/katex.min.js"></script>
 <script>
 // ---------- clock and tweens: every motion runs on one clock, so a scene can play live or be stepped frame by frame ----------
@@ -239,6 +246,7 @@ const moves = {
     if (c.textContent) await tween(200, (t) => { c.style.opacity = 1 - t; c.style.transform = `translateY(${-8 * t}px)`; });
     c.textContent = text; await tween(380, (t) => { c.style.opacity = t; c.style.transform = `translateY(${lerp(10, 0, t)}px)`; }); },
   async hold({ ms }) { await hold(ms); },
+  async wait() { await new Promise((r) => { stage.release = r; }); stage.release = null; },   // played by the app, not the director: hold until the user presses Esc
   async restore() {                                   // everything lets go and the page comes back into focus
     const things = [...layer.children, ...ink.children, $('caption'), $('ask')];
     await lagged(things, 380, 18, (e, t) => { e.style.opacity = (e._o0 ?? (e._o0 = parseFloat(getComputedStyle(e).opacity))) * (1 - t); });
@@ -276,6 +284,41 @@ window.run = async (script, { manual = false, gap = 260 } = {}) => {
   if (!stage.restored) { clock.rate = 1.6; try { await moves.restore(); } catch (e) { stage.error = stage.error || String(e); } }
   clock.rate = 1; stage.done = true; return window.state();
 };
-window.abort = () => { if (stage.done) return; stage.aborted = true; clock.rate = 8; };   // finish the current move fast, then restore
+window.abort = () => { if (stage.done) return; stage.aborted = true; clock.rate = 8; if (stage.release) stage.release(); };   // finish the current move fast, then restore
+
+// ---------- selecting pieces: the user drags a box around each one on the frozen screen, and it lifts on release ----------
+// select() resolves with [{ piece, rect }] when the user is done (Enter or the hotkey again, via finishSelect), or null on Esc (via cancel).
+// Lifted pieces stay on the stage; the next run() carries on from them and restores at the end.
+const sel = { on: false, picks: [], drag: null, done: null, max: 4, min: 12 };
+function hint(html, show) { const h = $('hint'); if (show) h.innerHTML = html; const from = parseFloat(h.style.opacity) || 0;
+  return tween(show ? 260 : 200, (t) => { h.style.opacity = lerp(from, show ? 1 : 0, t); }); }
+window.select = ({ max = 4, min = 12 } = {}) => new Promise((resolve) => {
+  live(); clock.manual = false; clock.rate = 1; stage.done = false; stage.aborted = false; stage.error = null;
+  Object.assign(sel, { on: true, picks: [], drag: null, done: resolve, max, min });
+  document.body.classList.add('selecting');
+  hint('Drag a box around each piece &nbsp;·&nbsp; <b>Enter</b> when done &nbsp;·&nbsp; <b>Esc</b> to cancel', true);
+});
+function endSelect(ok) {
+  if (!sel.on) return; sel.on = false; sel.drag = null; $('sel').style.display = 'none'; document.body.classList.remove('selecting');
+  hint('', false);
+  if (!ok) return sel.done(null);
+  Promise.all(sel.picks.map((p) => p.lifted)).then(() => sel.done(sel.picks.map(({ piece, rect }) => ({ piece, rect }))));   // let the last lift land first
+}
+window.finishSelect = () => endSelect(true);
+window.cancel = () => { if (sel.on) endSelect(false); else window.abort(); };   // Esc: leave selection, or end a playing scene early
+function dragRect(d, e) {                             // the dragged box in either direction, clipped to the screen
+  const x0 = Math.max(0, Math.min(d.x, e.clientX)), y0 = Math.max(0, Math.min(d.y, e.clientY));
+  const x1 = Math.min(innerWidth, Math.max(d.x, e.clientX)), y1 = Math.min(innerHeight, Math.max(d.y, e.clientY));
+  return { x: Math.round(x0), y: Math.round(y0), w: Math.round(Math.max(0, x1 - x0)), h: Math.round(Math.max(0, y1 - y0)) };
+}
+addEventListener('mousedown', (e) => { if (!sel.on || e.button !== 0 || sel.picks.length >= sel.max) return; sel.drag = { x: e.clientX, y: e.clientY }; });
+addEventListener('mousemove', (e) => { if (!sel.drag) return; const r = dragRect(sel.drag, e), b = $('sel');
+  Object.assign(b.style, { display: 'block', left: r.x + 'px', top: r.y + 'px', width: r.w + 'px', height: r.h + 'px' }); });
+addEventListener('mouseup', (e) => {
+  if (!sel.drag) return; const rect = dragRect(sel.drag, e); sel.drag = null; $('sel').style.display = 'none';
+  if (rect.w < sel.min || rect.h < sel.min) return;   // a click or a sliver is not a piece
+  const piece = 'p' + (sel.picks.length + 1); sel.picks.push({ piece, rect, lifted: moves.lift({ piece, rect }) });
+  if (sel.picks.length >= sel.max) hint(`That is the most pieces for now &nbsp;·&nbsp; <b>Enter</b> to continue`, true);
+});
 window.state = () => ({ done: stage.done, error: stage.error, aborted: !!stage.aborted, now: Math.round(clock.now), active: active.size });
 </script>

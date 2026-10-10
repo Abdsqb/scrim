@@ -14,12 +14,12 @@ There is a working prototype in `prototype/`. It is a hand-written demo, not the
 
 Works today:
 - Capture the screen, freeze it in a full-screen always-on-top window, restore it.
+- Select pieces on any screen by dragging a box. Each lifts on release; Enter recedes the page; Esc restores.
 - A stage that plays a script of moves in an explainer-video style (see `docs/03-motion-style.md`).
 - A 33-second demo scene with a follow-up question, played live or recorded frame by frame.
 - Global hotkey, Esc to end a scene early.
 
 Not built yet:
-- Selecting pieces by dragging a box. The demo page reports its own piece positions.
 - Any AI model call. The demo script is written by hand in `prototype/demo-script.js`.
 - Reading a cropped piece into LaTeX or code lines.
 - Layout. Every position in the demo script is a hand-picked pixel coordinate.
@@ -31,8 +31,10 @@ Runs on the owner's Windows PC (1920x1200, 100% scaling): the scene, Esc and the
 
 ```
 npm install        # once
-npm start          # live demo: Ctrl+Alt+Space plays the scene (Alt+Shift+Space if taken; the page shows which), Esc ends it, Ctrl+Alt+Q quits
-npm run demo:auto  # plays the scene once without the hotkey, then exits (for checking)
+npm start          # the real app: hotkey (Ctrl+Alt+Space, or Alt+Shift+Space if taken) freezes any screen, drag boxes, Enter, Esc restores, Ctrl+Alt+Q quits
+npm run demo       # the sample notes page and the hand-written demo scene, on the hotkey
+npm run demo:auto  # plays the demo scene once without the hotkey, then exits (for checking)
+npm run select:auto  # drags two boxes by itself and checks the restore (npx electron prototype/live.js --auto-select --esc-while-selecting tests Esc mid-selection)
 npm run record     # saves every frame to prototype/frames/ on a stepped clock
 npm test           # 12 checks: equation splitting, streamed script parsing, cost model
 ```
@@ -42,7 +44,7 @@ npm test           # 12 checks: equation splitting, streamed script parsing, cos
 Three parts. Details in `docs/02-architecture.md`.
 
 - **Stage** (`prototype/stage.html`): a web page shown in a full-screen window. It displays a screenshot and plays moves on it. Nothing on the real screen is touched.
-- **Moves**: a small fixed vocabulary (`lift`, `recede`, `write`, `code`, `split`, `match`, `swap`, `show`, `ask`, `say`, `restore`, `hold`). Each is a plain object.
+- **Moves**: a small fixed vocabulary (`lift`, `recede`, `write`, `code`, `split`, `match`, `swap`, `show`, `ask`, `say`, `restore`, `hold`, plus `wait`, which only the app plays). Each is a plain object.
 - **Director**: an AI model that will turn a question plus the pieces on stage into a list of moves, streamed one JSON object per line. Not built yet. Draft prompt in `docs/07-director-prompt-draft.md`.
 
 ## Rules that must hold

@@ -11,7 +11,7 @@ Each step ends with something you can see working. Do them in order. The AI mode
 | A full demo scene with a follow-up | Works, hand-written |
 | Hotkey, Esc to end early | Works |
 | Running on Windows | Works at 100% scaling. 125% and 150% not checked |
-| Dragging a box to select a piece | Not built |
+| Dragging a box to select a piece | Works. Not yet tried on a real PDF |
 | Layout by slots | Not built |
 | Reading a piece with a model | Not built |
 | Director model | Not built. Draft prompt exists |

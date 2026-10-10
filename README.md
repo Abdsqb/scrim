@@ -15,23 +15,27 @@ npm install
 npm start
 ```
 
-A page of sample lecture notes fills the screen.
+Scrim runs in the background with no window. Open anything, such as a PDF of your notes.
 
-- **Ctrl+Alt+Space** plays the scene. If another app already owns it, the app uses Alt+Shift+Space or Ctrl+Alt+X instead and the page says which.
-- **Esc** ends it early.
+- **Ctrl+Alt+Space** freezes the screen. If another app already owns it, Scrim uses Alt+Shift+Space or Ctrl+Alt+X instead and prints which.
+- **Drag a box** around each piece you are asking about. It lifts off the page. Up to four.
+- **Enter** (or the hotkey again) when done. The page recedes behind the pieces.
+- **Esc** puts the screen back.
 - **Ctrl+Alt+Q** quits.
 
 Other commands:
 
 ```
-npm test           # checks that need no screen
-npm run demo:auto  # play the scene once and exit
-npm run record     # save every frame to prototype/frames/
+npm run demo         # the sample lecture notes and the hand-written 33-second scene
+npm test             # checks that need no screen
+npm run demo:auto    # play the demo scene once and exit
+npm run select:auto  # drag two boxes automatically and check the screen comes back identical
+npm run record       # save every frame of the demo scene to prototype/frames/
 ```
 
 ## What is real and what is not
 
-The motion is real. The intelligence is not there yet: the scene is a hand-written script in `prototype/demo-script.js`, and the two pieces it lifts are found by the sample page itself. No AI model is called.
+The motion and the selection are real. The intelligence is not there yet: after you select pieces nothing explains them, and the full scene in `npm run demo` is a hand-written script in `prototype/demo-script.js`. No AI model is called.
 
 It runs on Windows at 100% scaling. Higher scaling and a second monitor are not checked yet.
 
@@ -41,7 +45,7 @@ It runs on Windows at 100% scaling. Higher scaling and a second monitor are not 
 CLAUDE.md          project brief for Claude Code
 docs/              product, architecture, motion style, services, build plan, test results
 prototype/
-  live.js          Electron main process: hotkey, capture, overlay, play
+  live.js          Electron main process: hotkey, capture, selection, overlay, play
   record.js        same scene on a stepped clock, saved frame by frame
   stage.html       the stage: clock, tweens and every move
   demo-script.js   the hand-written scene

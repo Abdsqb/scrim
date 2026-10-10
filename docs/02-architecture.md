@@ -43,6 +43,9 @@ Do not animate with `setTimeout`, CSS transitions or anything else that keeps it
 | `freeze(dataUrl)` | Loads the screenshot and keeps a copy of its pixels for measuring |
 | `run(script, { manual })` | Plays a script. Resolves with the final state once the stage is clean |
 | `abort()` | Finishes the current move at 8 times speed, then restores |
+| `select({ max, min })` | Lets the user drag boxes. Each box lifts on release. Resolves with `[{ piece, rect }]`, or `null` if cancelled. Lifted pieces stay for the next `run` |
+| `finishSelect()` | Ends selection (Enter or the hotkey again) |
+| `cancel()` | Esc: cancels selection, or aborts a playing scene |
 | `advance(dt)` | Manual mode only: move the clock forward |
 | `state()` | `{ done, error, aborted, now, active }` |
 
@@ -66,6 +69,7 @@ Each move is a plain object with a `move` name. Any move may carry `pause`, the 
 | `ask` | `text` | The user's follow-up question appears as a chip at the top |
 | `say` | `text` | The caption changes |
 | `hold` | `ms` | Nothing moves |
+| `wait` | none | Holds until the user presses Esc. Played by the app, never by the director |
 | `restore` | none | Everything fades and the page comes back |
 
 ### Parts
@@ -97,9 +101,9 @@ A starting set of slots: `top` for the main equation, `left` for code, `right` f
 
 This is step 2 in the build plan and comes before the director, because a model cannot be trusted to place things by pixel.
 
-## Selecting pieces (to build)
+## Selecting pieces
 
-Version one: on the frozen screen the user drags a box around each piece. The box becomes the `rect` for `lift`, and the crop is what gets sent to the reader.
+On the frozen screen the user drags a box around each piece. The box becomes the `rect` for `lift`, and the crop is what will be sent to the reader. Boxes smaller than 12 px on a side are ignored, boxes are clipped to the screen, and there are at most four. Enter is registered as a global shortcut only while selecting, because the stage may not get keyboard focus away from another app. Until the director exists, `npm start` plays `recede`, a caption and `wait` after selection.
 
 Later: use the cursor position and the words of the question to find the pieces without a box.
 
