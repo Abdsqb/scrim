@@ -7,3 +7,4 @@ out/
 .dev.vars
 CLAUDE.local.md
 *.log
+samples/

@@ -13,6 +13,7 @@
     "test": "node prototype/test_core.js"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "0.129.0",
     "katex": "0.19.0"
   },
   "devDependencies": {
