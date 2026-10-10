@@ -11,7 +11,8 @@
     "select:auto": "electron prototype/live.js --auto-select",
     "record": "electron prototype/record.js",
     "test": "node prototype/test_core.js",
-    "samples": "electron tools/make-samples.js"
+    "samples": "electron tools/make-samples.js",
+    "cast": "electron tools/cast-test.js"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "0.129.0",
