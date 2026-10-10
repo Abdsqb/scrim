@@ -15,15 +15,15 @@ app.whenReady().then(async () => {
   try {
     fs.rmSync(out, { recursive: true, force: true }); fs.mkdirSync(out, { recursive: true });
     const display = screen.getPrimaryDisplay(), { x, y, width: W, height: H } = display.bounds;
-    const notes = new BrowserWindow({ x, y, width: W, height: H, frame: false, show: true });
+    const notes = new BrowserWindow({ x, y, width: W, height: H, frame: false, show: true }); notes.setBounds(display.bounds);   // Windows clamps new windows above the taskbar
     await notes.loadFile(path.join(__dirname, 'notes.html')); await new Promise((r) => setTimeout(r, 900));
     const rects = await notes.webContents.executeJavaScript('pieceRects()');
     const shot = (await desktopCapturer.getSources({ types: ['screen'], thumbnailSize: { width: W, height: H } }))[0].thumbnail;
 
-    const overlay = new BrowserWindow({ x, y, width: W, height: H, frame: false, show: false, alwaysOnTop: true, backgroundColor: '#000000' });
+    const overlay = new BrowserWindow({ x, y, width: W, height: H, frame: false, show: false, alwaysOnTop: true, backgroundColor: '#000000' }); overlay.setBounds(display.bounds);
     await overlay.loadFile(path.join(__dirname, 'stage.html'));
     const js = (code) => overlay.webContents.executeJavaScript(code);
-    await js(`freeze(${JSON.stringify('data:image/png;base64,' + shot.toPNG().toString('base64'))})`); overlay.show(); await new Promise((r) => setTimeout(r, 300));
+    await js(`freeze(${JSON.stringify('data:image/png;base64,' + shot.toPNG().toString('base64'))})`); overlay.setBounds(display.bounds); overlay.show(); await new Promise((r) => setTimeout(r, 300));
 
     const before = (await overlay.webContents.capturePage()).toPNG();
     await js(`run(${JSON.stringify(demoScript(W, rects))}, { manual: true }); 0`);

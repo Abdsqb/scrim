@@ -15,8 +15,9 @@ Run on 2026-10-10 on the owner's PC: Windows 11, x64, one display at 1920 by 120
 | Ctrl+Alt+Space | Already taken by another app (Flow Launcher or Copilot were running). The app now takes the first free hotkey of Ctrl+Alt+Space, Alt+Shift+Space, Ctrl+Alt+X and shows it on the demo page |
 
 Notes:
+- **Fixed: the stage was squashed.** Windows shrinks a new window to fit above the taskbar, so both windows came out 1920 by 1160 on a 1920 by 1200 screen. The screenshot was squeezed into that height and every lifted piece was cut from slightly the wrong place, worse lower on the page. Calling `setBounds` after the window is created is not clamped. With that, the frozen stage matches the page pixel for pixel, and `live.js` now warns if the stage and screen sizes ever differ.
 - The very first launch, right after Electron was downloaded, took 4.6 s to freeze and then hung. It did not happen again. Most likely Windows scanning the new binary.
-- Scaling at 125% and 150% is **not tested**. Chromium's `--force-device-scale-factor` flag gives wrong display bounds under Electron (the size is divided by the scale twice), so it cannot stand in for the real Windows setting.
+- Scaling at 125% and 150%: the owner saw lifted text jump sideways and an off-centre crop at 150% before the fix above. **Re-check after the fix.** Chromium's `--force-device-scale-factor` flag gives wrong display bounds under Electron (the size is divided by the scale twice), so it cannot stand in for the real Windows setting.
 - Capture is the slowest stage. `desktopCapturer.getSources` takes about 260 ms on this PC against 26 to 99 ms on the Linux display. Worth fixing before the speed targets matter, for example by keeping a capture stream open.
 
 ## Linux (first prototype)

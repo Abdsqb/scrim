@@ -9,6 +9,8 @@ const demoScript = require('./demo-script');
 const AUTO = process.argv.includes('--auto'), ABORT = process.argv.includes('--abort');
 const HOTKEYS = ['Control+Alt+Space', 'Alt+Shift+Space', 'Control+Alt+X'];   // first one that is free wins
 const log = (...a) => console.log('[live]', ...a);
+// Windows shrinks a new window to fit above the taskbar, which squashed the screenshot. Setting the bounds again after creation is not clamped.
+const cover = (win, bounds) => { win.setBounds(bounds); return win; };
 let busy = false;
 
 app.whenReady().then(async () => {
@@ -16,12 +18,12 @@ app.whenReady().then(async () => {
   log(`display ${W}x${H} at scale ${sf}, ${process.platform}, electron ${process.versions.electron}`);
 
   // The page being "studied". In the real app this is whatever is on the user's screen.
-  const notes = new BrowserWindow({ x, y, width: W, height: H, frame: false, backgroundColor: '#fbfaf6' });
+  const notes = cover(new BrowserWindow({ x, y, width: W, height: H, frame: false, backgroundColor: '#fbfaf6' }), display.bounds);
   await notes.loadFile(path.join(__dirname, 'notes.html'));
 
   // The stage is created hidden at start-up so that showing it later is instant.
-  const overlay = new BrowserWindow({ x, y, width: W, height: H, frame: false, show: false, alwaysOnTop: true, skipTaskbar: true, resizable: false,
-    backgroundColor: '#000000', webPreferences: { backgroundThrottling: false } });
+  const overlay = cover(new BrowserWindow({ x, y, width: W, height: H, frame: false, show: false, alwaysOnTop: true, skipTaskbar: true, resizable: false,
+    backgroundColor: '#000000', webPreferences: { backgroundThrottling: false } }), display.bounds);
   overlay.setAlwaysOnTop(true, 'screen-saver');
   await overlay.loadFile(path.join(__dirname, 'stage.html'));
   const js = (code) => overlay.webContents.executeJavaScript(code);
@@ -37,7 +39,9 @@ app.whenReady().then(async () => {
       const source = sources.find((s) => s.display_id === String(display.id)) || sources[0];
       const tCap = performance.now();
       await js(`freeze(${JSON.stringify('data:image/png;base64,' + source.thumbnail.toPNG().toString('base64'))})`);
-      overlay.show(); overlay.focus();
+      cover(overlay, display.bounds).show(); overlay.focus();
+      const inner = await js('[innerWidth, innerHeight]');
+      if (inner[0] !== W || inner[1] !== H) log(`WARNING stage is ${inner.join('x')}, screen is ${W}x${H}: pieces will be cut from the wrong place`);
       log(`capture ${Math.round(tCap - t0)} ms, freeze ${Math.round(performance.now() - tCap)} ms`);
       globalShortcut.register('Escape', () => { js('abort()'); });
       if (ABORT) setTimeout(() => js('abort()'), 6000);
