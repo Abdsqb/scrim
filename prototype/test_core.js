@@ -79,7 +79,24 @@ t('script line format is much shorter than drawing code', () => {
   assert(wire.length < svgEquivalent / 3);
 });
 
-// ---------- 3. Cost model, from the published prices ----------
+// ---------- 3. Casting: checking what the model sends back ----------
+const casting = require('./casting');
+const eq = (parts) => ({ kind: 'equation', box: [10, 10, 200, 40], parts: parts.map((tex) => ({ tex })) });
+t('casting accepts a well-formed equation', () => assert.strictEqual(casting.validate(eq(['d[v]', '{}={}', String.raw`\min`]), 1000, 800), null));
+t('casting joins parts with a space, so \\Rightarrow then T(n) is valid', () => assert.strictEqual(casting.validate(eq(['O(1)', String.raw`\Rightarrow`, 'T(n)']), 1000, 800), null));
+t('casting turns a lone \\left( or \\right) into \\big', () => {
+  const p = eq(['d[v]', String.raw`\left(`, 'd[u]', String.raw`\right)`, String.raw`T\left(\frac{n}{2}\right)`]);
+  assert.strictEqual(casting.validate(p, 1000, 800), null);
+  assert.deepStrictEqual(p.parts.map((q) => q.tex), ['d[v]', String.raw`\big(`, 'd[u]', String.raw`\big)`, String.raw`T\left(\frac{n}{2}\right)`]);
+});
+t('casting rejects bad LaTeX, links and boxes off screen', () => {
+  assert(casting.validate(eq([String.raw`\frac{a}{`]), 1000, 800));
+  assert(casting.validate(eq([String.raw`\href{javascript:alert(1)}{x}`]), 1000, 800));
+  assert(casting.validate({ ...eq(['x']), box: [990, 10, 200, 40] }, 1000, 800));
+  assert(casting.validate({ ...eq(['x']), box: [10, 10, 5, 5] }, 1000, 800));
+});
+
+// ---------- 4. Cost model, from the published prices ----------
 const visTok = (w, h) => Math.ceil(w / 28) * Math.ceil(h / 28);       // Claude vision docs
 t('image token formula matches the docs table', () => {
   assert.strictEqual(visTok(200, 200), 64);

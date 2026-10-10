@@ -6,24 +6,36 @@ const katex = require('katex');
 const MODEL = 'claude-haiku-5-5';
 
 // Kept identical for every request of a given image size, so the prompt cache can reuse it.
-const system = (W, H) => `You look at a screenshot of a student's screen, find the pieces of their course material that their question is about, and convert each piece into structured content.
+// boxesFirst: every piece's box comes before any content, so pieces can lift while the model is still reading them.
+const system = (W, H, { boxesFirst = false } = {}) => `You look at a screenshot of a student's screen, find the pieces of their course material that their question is about, and convert each piece into structured content.
 
 The screenshot is ${W} by ${H} pixels. Boxes are [x, y, width, height] in those pixels, with 0,0 at the top left.
 
-Reply with one JSON object per line, one line per piece, most important first. No other text, no code fences, no blank lines.
+${boxesFirst ? `Reply with one JSON object per line. No other text, no code fences, no blank lines.
+
+First, one line per piece with only where it is, most important first:
+{"piece":"p1","kind":"equation","box":[x,y,w,h]}
+{"piece":"p2","kind":"code","box":[x,y,w,h]}
+
+Then, for each piece in the same order, one line with its content:
+{"piece":"p1","parts":[{"id":"...","tex":"..."}, ...]}
+{"piece":"p2","lines":["...", "..."]}
+` : `Reply with one JSON object per line, one line per piece, most important first. No other text, no code fences, no blank lines.
 
 For an equation or expression:
 {"piece":"p1","kind":"equation","box":[x,y,w,h],"parts":[{"id":"...","tex":"..."}, ...]}
 
 For code or pseudocode:
 {"piece":"p2","kind":"code","box":[x,y,w,h],"lines":["...", "..."]}
-
+`}
 If nothing on screen matches the question:
 {"kind":"none","reason":"..."}
 
 Choosing pieces:
 - Pick only what the question refers to. "this equation" means one equation. "how this equation fits into this algorithm" means one equation and one algorithm. At most four pieces.
 - When several equations or code blocks are visible, pick the ones the question names or describes, not the ones that merely look similar.
+- If the question names two things, such as a formula and code, or an equation and an algorithm, return both, even when one is asked about inside the other ("where does this formula appear in this code" means the formula and the code).
+- Start your reply with the first JSON line. Do not explain your choice.
 - Prefer the main reading area over toolbars, sidebars, notifications and other windows.
 - The box must enclose the whole piece with a small margin. It does not need to be exact; the app tightens it.
 
@@ -32,8 +44,7 @@ Rules for equations:
 - Split it into parts in reading order. Joined together, the parts must render as the original equation.
 - A part is one meaningful unit: one side of an equation, an operator name, one argument of a function, a summand.
 - Give a short id to every part a student might ask about. Use ids like "lhs", "min", "arg1". Punctuation, brackets and bare operators get no id.
-- Write an operator that stands alone with empty groups on both sides so spacing is kept, for example {}={}.
-- Use standard LaTeX that KaTeX supports. No \\htmlId, no \\href, no macros.
+- Write an operator that stands alone with empty groups on both sides so spacing is kept, for example {}={}.- Use standard LaTeX that KaTeX supports. No \\htmlId, no \\href, no macros.
 
 Rules for code:
 - One string per line, in order. Keep indentation as spaces.
@@ -50,15 +61,29 @@ function lineParser(onLine, onBad) {
 }
 
 const KOPT = { trust: (c) => c.command === '\\htmlId', strict: false, throwOnError: true, output: 'html' };
-// Returns an error message, or null if the piece is safe to put on stage.
-function validate(p, W, H) {
+// The stage renders every part on its own, so a bracket split into its own part cannot use \left( ... \right), which only work
+// as a pair. Models do split them, and prompting against it made things worse, so a lone \left or \right becomes \big.
+function repair(p) {
+  for (const q of p.parts) if (typeof q.tex === 'string' && (/\\left(?![a-zA-Z])/.test(q.tex) !== /\\right(?![a-zA-Z])/.test(q.tex)))
+    q.tex = q.tex.replace(/\\(left|right)(?![a-zA-Z])/g, '\\big');
+}
+
+// Each returns an error message, or null if that much of the piece is safe to put on stage.
+function validateBox(p, W, H) {
   if (!p || (p.kind !== 'equation' && p.kind !== 'code')) return 'unknown kind ' + (p && p.kind);
   const b = p.box;
   if (!Array.isArray(b) || b.length !== 4 || !b.every(Number.isFinite)) return 'box is not [x,y,w,h]';
   if (b[2] < 12 || b[3] < 12 || b[0] < 0 || b[1] < 0 || b[0] + b[2] > W + 2 || b[1] + b[3] > H + 2) return 'box is tiny or off screen';
+  return null;
+}
+const validate = (p, W, H) => validateBox(p, W, H) || validateContent(p);
+function validateContent(p) {
+  if (p.kind === 'equation' && Array.isArray(p.parts)) repair(p);
   if (p.kind === 'equation') {
     if (!Array.isArray(p.parts) || !p.parts.length) return 'equation has no parts';
-    for (const q of p.parts) { if (typeof q.tex !== 'string') return 'part without tex'; try { katex.renderToString(q.tex, KOPT); } catch (e) { return 'bad LaTeX: ' + q.tex; } }
+    for (const q of p.parts) { if (typeof q.tex !== 'string') return 'part without tex';
+      // KaTeX already renders these harmlessly with trust limited, but Casting has no reason to send them, so refuse outright.
+      if (/\\(href|url|html[a-zA-Z]*|includegraphics)(?![a-zA-Z])/.test(q.tex)) return 'link or HTML command in LaTeX: ' + q.tex; try { katex.renderToString(q.tex, KOPT); } catch (e) { return 'bad LaTeX: ' + q.tex; } }
     // Joined with a space, or \Rightarrow followed by T(n) would read as the unknown command \RightarrowT.
     try { katex.renderToString(p.parts.map((q) => q.tex).join(' '), KOPT); } catch (e) { return 'parts do not join into valid LaTeX'; }
   } else if (!Array.isArray(p.lines) || !p.lines.length || !p.lines.every((l) => typeof l === 'string')) return 'code has no lines';
@@ -111,4 +136,4 @@ function snap(px, W, H, box, { margin = 28, gap = 6, thresh = 20 } = {}) {
   return [x0, y0, x1 - x0, y1 - y0];
 }
 
-module.exports = { MODEL, system, lineParser, validate, snap };
+module.exports = { MODEL, system, lineParser, validate, validateBox, validateContent, snap };
