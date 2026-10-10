@@ -88,10 +88,10 @@ t('image token formula matches the docs table', () => {
 });
 const price = { haiku55: { in: 0.10, out: 0.50, cacheRead: 0.01 }, sonnet55: { in: 2, out: 10, cacheRead: 0.10 } }; // $ per million tokens
 const STT_PER_HR = 0.15, TTS_PER_1K = 0.04;
-function sceneCost(model, { followUps = 4, fullScreen = false } = {}) {
+function sceneCost(model, { followUps = 4, fullScreen = true } = {}) {   // the full screen goes with the first question; follow-ups send no image
   const p = price[model];
   const sys = 900;                                   // instructions + move list, cached after first call
-  const img = fullScreen ? visTok(1920, 1080) : visTok(640, 120) + visTok(720, 400);
+  const img = fullScreen ? visTok(1920, 1200) : visTok(640, 120) + visTok(720, 400);   // or two dragged pieces
   const pieceText = 220, question = 40, stage = 250, outPerTurn = 450; // output includes some thinking
   let inTok = sys + img + question, out = outPerTurn, cached = 0;
   for (let i = 0; i < followUps; i++) { cached += sys; inTok += pieceText + stage + question + i * 120; out += outPerTurn; }
@@ -101,14 +101,14 @@ function sceneCost(model, { followUps = 4, fullScreen = false } = {}) {
   const tts = turns * 320 / 1000 * TTS_PER_1K;       // 320 characters spoken per answer
   return { img, inTok, out, llm, stt, tts, total: llm + stt + tts };
 }
-const h = sceneCost('haiku55'), s = sceneCost('sonnet55'), hf = sceneCost('haiku55', { fullScreen: true });
-console.log('   cropped pieces image tokens:', h.img, '| full 1080p screen:', hf.img);
+const h = sceneCost('haiku55'), s = sceneCost('sonnet55'), hc = sceneCost('haiku55', { fullScreen: false });
+console.log('   full 1920x1200 screen image tokens:', h.img, '| two dragged pieces:', hc.img);
 for (const [n, c] of [['Haiku 5.5', h], ['Sonnet 5.5', s]])
   console.log(`   ${n}: model $${c.llm.toFixed(5)}  speech-in $${c.stt.toFixed(5)}  voice-out $${c.tts.toFixed(5)}  total $${c.total.toFixed(4)} per 5-question scene`);
 const perMonth = (c, scenesPerDay) => c.total * scenesPerDay * 30;
 console.log(`   heavy user (10 scenes/day): Haiku $${perMonth(h, 10).toFixed(2)}/mo, Sonnet $${perMonth(s, 10).toFixed(2)}/mo; without voice-out Haiku $${((h.total - h.tts) * 300).toFixed(2)}/mo`);
 t('voice-out is the largest cost on the small model', () => assert(h.tts > h.llm && h.tts > h.stt));
-t('cropping cuts image tokens by >4x vs full screen', () => assert(hf.img / h.img > 4));
+t('cropping cuts image tokens by >4x vs full screen', () => assert(h.img / hc.img > 4));
 
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

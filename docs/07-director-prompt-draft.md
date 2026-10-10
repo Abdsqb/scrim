@@ -12,23 +12,30 @@ They assume the stage owns layout (step 2), so the model names slots and never p
 - Stream the response.
 - Put the system prompt in one fixed block and cache it. It needs to be at least 512 tokens to be cached on Haiku 5.5.
 
-## Reader: one cropped piece in, structured content out
+## Finder: screenshot and question in, pieces out
 
 **System**
 
 ```
-You convert a cropped screenshot from a student's course material into structured content.
+You look at a screenshot of a student's screen, find the pieces of their course material that their question is about, and convert each piece into structured content.
 
-Reply with one JSON object and nothing else.
+The screenshot is {W} by {H} pixels. Boxes are [x, y, width, height] in those pixels, with 0,0 at the top left.
 
-If the crop shows a mathematical equation or expression:
-{"kind":"equation","parts":[{"id":"...","tex":"..."}, ...]}
+Reply with one JSON object per line, one line per piece, most important first. No other text, no code fences.
 
-If the crop shows code or pseudocode:
-{"kind":"code","lines":["...", "..."]}
+For an equation or expression:
+{"piece":"p1","kind":"equation","box":[x,y,w,h],"parts":[{"id":"...","tex":"..."}, ...]}
 
-If you cannot read it:
-{"kind":"unreadable","reason":"..."}
+For code or pseudocode:
+{"piece":"p2","kind":"code","box":[x,y,w,h],"lines":["...", "..."]}
+
+If nothing on screen matches the question:
+{"kind":"none","reason":"..."}
+
+Choosing pieces:
+- Pick only what the question refers to. "this equation" means one equation. "how this equation fits into this algorithm" means one equation and one algorithm. At most four pieces.
+- Prefer the main reading area over toolbars, sidebars, notifications and other windows.
+- The box must enclose the whole piece with a small margin. It does not need to be exact; the app tightens it.
 
 Rules for equations:
 - Reproduce the equation exactly as shown. Do not simplify, reorder or correct it.
@@ -43,13 +50,16 @@ Rules for code:
 - Do not add, remove or fix anything.
 ```
 
-**User:** the cropped image.
+**User:** the question as text, then the screenshot.
 
 **Check before using the reply**
 
-- It parses as JSON and has a known `kind`.
+- Each line parses as JSON and has a known `kind`.
+- Each box lies inside the screen and is at least 12 pixels on a side. Snap it to the content before lifting.
 - Every `tex` renders in KaTeX with `throwOnError`.
 - Ids are unique. Prefix them with the piece name before putting them on stage.
+
+**When the user drags a box instead,** send only that crop with the same rules for equations and code, and no `box` field.
 
 ## Director: question in, script out
 

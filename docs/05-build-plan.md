@@ -13,7 +13,7 @@ Each step ends with something you can see working. Do them in order. The AI mode
 | Running on Windows | Works at 100% scaling. 125% and 150% not checked |
 | Dragging a box to select a piece | Works. Not yet tried on a real PDF |
 | Layout by slots | Not built |
-| Reading a piece with a model | Not built |
+| Finding and reading pieces with a model | Not built |
 | Director model | Not built. Draft prompt exists |
 | Stage memory and follow-ups | Not built |
 | Voice in and out | Not built |
@@ -46,6 +46,8 @@ Each step ends with something you can see working. Do them in order. The AI mode
 
 **Done when:** on a real PDF of course notes, two boxed pieces lift and the page recedes behind them.
 
+Dragging stays after step 4 as the fallback when the model picks the wrong piece.
+
 ## Step 2. Stage-owned layout
 
 **Do:** replace hand-picked `at` coordinates with slots. A script names `top`, `left`, `right` or a row below an existing row. The stage computes coordinates from the screen size and what is already placed.
@@ -69,21 +71,25 @@ Each step ends with something you can see working. Do them in order. The AI mode
 
 **Done when:** every move in the demo passes through the validator, and a deliberately wrong script is refused without touching the stage.
 
-## Step 4. Read a piece with the model
+## Step 4. Ask a question; the model finds and reads the pieces
 
-**Do:** send one cropped piece to the vision model and get back parts or lines. Call the model straight from the app for now, with the key in a git-ignored file. Start from `07-director-prompt-draft.md`.
+**Do:** after the freeze, a small box takes a typed question. Send the full screenshot and the question to the vision model in one call. It streams back one line per piece: a rough box and its content (equation parts or code lines). Snap each box to the content on screen, lift it, and turn it live. Dragging a box still works and replaces the model's choice. Call the model straight from the app for now, with the key in a git-ignored file. Start from the finder prompt in `07-director-prompt-draft.md`.
+
+**First, before building on it:** take ten screenshots of real notes, ask the model for the boxes, and measure how far they are from the true pieces, before and after snapping. If snapping cannot fix them, rethink before going further.
 
 **Check**
+- Pieces start lifting about a second after Enter.
+- The right pieces are chosen. Count over twenty questions.
 - On ten equations from real notes, the LaTeX renders and looks like the original.
 - The lifted photo lands on the live text without a visible jump.
 - Bad LaTeX is caught (`throwOnError`) and the scene restores.
-- Log tokens in, tokens out, and time to full response for every call.
+- Log tokens in, tokens out, time to the first piece and time to full response for every call.
 
-**Done when:** boxing an equation and a code block on real notes produces live, correct versions of both.
+**Done when:** typing a question about an equation and an algorithm on real notes lifts the right two pieces without any dragging, and produces live, correct versions of both.
 
 ## Step 5. The director
 
-**Do:** send the question, the piece contents and the stage data. Stream the reply, parse one JSON object per line, validate each, and play it as it arrives. Type the question in a small box for now.
+**Do:** send the question, the piece contents and the stage data. Stream the reply, parse one JSON object per line, validate each, and play it as it arrives. Use the question box from step 4.
 
 **Check**
 - Time from pressing Enter to the first move playing. Target about one second.
@@ -91,7 +97,7 @@ Each step ends with something you can see working. Do them in order. The AI mode
 - A junk line in the stream is skipped without stopping the scene.
 - Set effort to low and compare speed and accuracy against the default.
 
-**Done when:** a typed question about two boxed pieces produces a correct, watchable scene on at least three different pages, with the first move inside about a second and the full explanation inside four.
+**Done when:** a typed question produces a correct, watchable scene on at least three different pages, with the first move inside about a second and the full explanation inside four.
 
 This is the point to record a clip and show people.
 
@@ -124,7 +130,8 @@ Follow the phases in `04-services-and-costs.md`: five classmates with an unsigne
 | Moment | Target |
 | --- | --- |
 | Hotkey to frozen screen | Under 0.1 s |
-| Box drawn to piece lifted | Under 0.3 s |
+| Question asked to pieces lifting | About 1 s |
+| Box drawn to piece lifted (fallback) | Under 0.3 s |
 | Question asked to first move playing | About 1 s |
 | First explanation complete | 3 to 4 s |
 | Follow-up to first move | Under 1 s |

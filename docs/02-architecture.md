@@ -5,7 +5,9 @@ The app has three parts: a stage that shows the frozen screen, a small set of mo
 ```
  hotkey ──> capture screen ──> stage shows the screenshot (frozen)
                                    │
- user boxes pieces ──> crops ──> reader model ──> piece content (LaTeX parts, code lines)
+ question + screenshot ──> finder model ──> each piece: rough box + content (LaTeX parts, code lines)
+                                   │        box snapped to the content on screen, piece lifts
+                                   │        (fallback: the user drags a box, and only that crop is read)
                                    │
  question + pieces + stage state ──> director model ──> script (one move per line, streamed)
                                    │
@@ -14,7 +16,7 @@ The app has three parts: a stage that shows the frozen screen, a small set of mo
  follow-up question ──────────────┘   (stage state goes back to the director)
 ```
 
-Only the first and last boxes exist today. The reader and the director are not built.
+The capture, the stage and dragging a box exist today. The finder and the director are not built.
 
 ## The stage
 
@@ -101,22 +103,26 @@ A starting set of slots: `top` for the main equation, `left` for code, `right` f
 
 This is step 2 in the build plan and comes before the director, because a model cannot be trusted to place things by pixel.
 
-## Selecting pieces
+## Finding pieces (to build)
 
-On the frozen screen the user drags a box around each piece. The box becomes the `rect` for `lift`, and the crop is what will be sent to the reader. Boxes smaller than 12 px on a side are ignored, boxes are clipped to the screen, and there are at most four. Enter is registered as a global shortcut only while selecting, because the stage may not get keyboard focus away from another app. Until the director exists, `npm start` plays `recede`, a caption and `wait` after selection.
+The model finds them. With each new question the full screenshot goes to the finder (below), which returns a rough box around each piece the question is about. Model coordinates are approximate, and a lift that cuts through a letter looks wrong, so each box is snapped locally: grown or shrunk until its edges sit on clear background, with the same kind of pixel scan as `inkBox`. Then `lift` plays with the snapped box.
+
+## Selecting pieces by dragging
+
+The fallback when the finder picks the wrong piece. On the frozen screen the user drags a box around each piece. The box becomes the `rect` for `lift`, and the crop is what will be sent to the reader. Boxes smaller than 12 px on a side are ignored, boxes are clipped to the screen, and there are at most four. Enter is registered as a global shortcut only while selecting, because the stage may not get keyboard focus away from another app. Until the director exists, `npm start` plays `recede`, a caption and `wait` after selection.
 
 Later: use the cursor position and the words of the question to find the pieces without a box.
 
-## The reader (to build)
+## The finder (to build)
 
-A vision model call that turns one cropped piece into structured content.
+One vision model call takes the screenshot and the question, decides which pieces the question is about, and returns each one's box and structured content. Finding and reading in one call saves a round trip. Each piece is one line of the streamed reply, box first, so the first piece can lift before the rest arrive. A dragged piece is read on its own crop with the same rules.
 
 - An equation becomes a list of parts with LaTeX and ids.
 - Code becomes a list of lines.
 
-The crop is small. In the test, the equation was 368 by 52 pixels and the algorithm 258 by 152, which cost 28 and 60 image tokens.
+A full 1920 by 1200 screenshot costs about 2,967 image tokens, about $0.0003 on Haiku 5.5. A dragged crop is far smaller: in the test, the equation was 368 by 52 pixels and the algorithm 258 by 152, which cost 28 and 60 image tokens.
 
-The stage already measures where the dark pixels of a crop are (`inkBox`), so a lifted photo can be scaled to land exactly on the live text. For that to look right, the reader's LaTeX must reproduce the original closely.
+The stage already measures where the dark pixels of a crop are (`inkBox`), so a lifted photo can be scaled to land exactly on the live text. For that to look right, the finder's LaTeX must reproduce the original closely.
 
 ## The director (to build)
 

@@ -21,7 +21,7 @@ Works today:
 
 Not built yet:
 - Any AI model call. The demo script is written by hand in `prototype/demo-script.js`.
-- Reading a cropped piece into LaTeX or code lines.
+- Finding the pieces a question is about on the full screenshot, and reading them into LaTeX or code lines, with a vision model. Dragging a box is the fallback.
 - Layout. Every position in the demo script is a hand-picked pixel coordinate.
 - Voice in, voice out, stage memory for follow-ups, accounts, server, installer.
 
@@ -54,7 +54,7 @@ Three parts. Details in `docs/02-architecture.md`.
 - **A scene always ends restored.** Finished, ended with Esc, or failed, the screen must come back exactly as it was. `npm run record` checks this byte for byte.
 - **One clock.** Every motion goes through `tween()` on the shared clock in the stage. No `setTimeout`, no CSS transitions, no free-running animations. This is what makes scenes pausable, skippable and recordable.
 - **No API key in the app.** Keys live on a server the app calls. During early development a key may sit in a local file that is git-ignored. Never commit one, never bundle one.
-- **Capture only on the hotkey.** Send only the boxed pieces to any service, never the whole screen.
+- **Capture only on the hotkey.** The screenshot goes to the model only with a new question, never at any other time, and is never stored on the server. The app says so plainly. (Decided 2026-10-10: the whole screen is sent so the model can find the pieces itself, as Clicky does.)
 - **KaTeX `trust` stays limited** to `\htmlId`. Model-written LaTeX must not be able to add links or markup.
 - **Windows first.** Mac comes later and needs a screen recording permission step.
 
@@ -74,7 +74,7 @@ Three parts. Details in `docs/02-architecture.md`.
 1. Drag a box to select a piece on the frozen screen.
 2. Let the stage own layout, so scripts name slots instead of pixels.
 3. Give the stage a memory of what is on it, and validate moves against it.
-4. Read a cropped piece with a vision model.
+4. Ask a typed question; one vision model call finds the pieces on the full screenshot and reads them. Dragging stays as the fallback.
 5. Have the director write the script.
 6. Follow-ups, then voice.
 7. Move the API key to a server.

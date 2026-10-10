@@ -23,7 +23,7 @@ You are reading typed lecture notes. You hold a key and say "I don't understand 
 
 **Done means:** the scene works start to finish on three different pages of the owner's own course notes, with the first full explanation on screen in under four seconds.
 
-**Left out of version one:** handwriting, video, and finding the pieces automatically. The user drags a box around each piece.
+**Left out of version one:** handwriting and video. Scrim finds the pieces the question is about by itself. Dragging a box around a piece is the fallback when it picks the wrong one.
 
 ## Who it is for
 
@@ -47,7 +47,7 @@ The idea came out of a long search for a real friction in studying. Findings tha
 | The model matches a term to the wrong thing | Show a one-line reason with every match. Stick to typed material. Check twenty scenes by hand and count errors |
 | It feels slow | Start local motion immediately so it covers the model's delay. Measure every stage |
 | A larger product copies the effect | Stay narrow on course material and improve faster |
-| Capturing the screen worries people | Capture only on the hotkey, send only the boxed pieces, and say so plainly |
+| Capturing the screen worries people | Capture only on the hotkey. Send the screenshot only with a new question, never store it on the server, and say plainly in the app what leaves the PC. Clicky sends the screen the same way |
 | Each use costs money | Paid voice is 95% of the cost. Default to captions and the built-in voice |
 
 ## How to find out if it is worth continuing
@@ -61,7 +61,6 @@ If the owner still uses it in week two and at least two classmates come back to 
 
 Add moves and content types one at a time, in the order people ask for them.
 
-- **Find pieces automatically** from the cursor position and the words "this equation".
 - **Quiz mode.** Before revealing a match, ask which line the user thinks a term belongs to. This turns watching into practice.
 - **Code in videos.** Pause a coding tutorial, lift a function, step through it.
 - **Charts and figures.** Pull a chart apart into its series.

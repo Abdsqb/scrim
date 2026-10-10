@@ -13,7 +13,7 @@ The full product needs eleven outside services, and most are free at this scale.
         ▼
  Your server (Cloudflare Worker)
    holds every API key, checks who is asking, limits use per person
-        ├──> Claude Haiku 5.5     the director and reader model
+        ├──> Claude Haiku 5.5     the finder and director model
         ├──> AssemblyAI           speech to text, streamed
         └──> ElevenLabs           premium voice, optional
 
@@ -45,7 +45,7 @@ Tauri is a lighter alternative to Electron with a much smaller download. It was 
 
 | Job | Service | Free allowance | Paid price | Needed from |
 | --- | --- | --- | --- | --- |
-| Director and reader model | Claude Haiku 5.5, Anthropic API | A small credit for new accounts | $0.10 per million tokens in, $0.50 out | Phase 1 |
+| Finder and director model | Claude Haiku 5.5, Anthropic API | A small credit for new accounts | $0.10 per million tokens in, $0.50 out | Phase 1 |
 | Server that holds keys | Cloudflare Workers | 100,000 requests a day | $5 a month for 10 million requests | Phase 1 |
 | Code, downloads, updates | GitHub | Free | None | Phase 1 |
 | Speech to text | AssemblyAI Universal-Streaming | Up to 333 hours of streaming | $0.15 per hour | Phase 2 |
@@ -73,7 +73,7 @@ For Claude Haiku 5.5, model id `claude-haiku-5-5`:
 - It thinks before answering by default, at medium effort. Set effort to low for the director and measure time to first move.
 - Leave out `temperature`, `top_p` and `top_k`. The documentation says some values return an error.
 - Instructions can be cached once they pass 512 tokens, and cached input costs a tenth of the normal price. Keep the move list and rules in one fixed block at the start of every request.
-- Images cost about `ceil(width / 28) × ceil(height / 28)` tokens. A full 1080p screenshot is 2,691. Two boxed pieces are a few hundred at most.
+- Images cost about `ceil(width / 28) × ceil(height / 28)` tokens. A full 1080p screenshot is 2,691 and 1920 by 1200 is 2,967. One goes with each new question; follow-ups send none.
 - New accounts can start with lower limits than published. The standard starting tier allows 1,000 requests a minute and $500 a month.
 - A monthly spend limit can be set in the console below the account's cap. Set one on day one.
 
@@ -83,7 +83,7 @@ A five-question scene costs about a third of a cent with the built-in voice and 
 
 | Part of one five-question scene | Cost |
 | --- | --- |
-| Model, Claude Haiku 5.5 | $0.0016 |
+| Model, Claude Haiku 5.5 | $0.0018 |
 | Speech to text | $0.0017 |
 | Paid voice, ElevenLabs Flash | $0.064 |
 
@@ -91,18 +91,18 @@ Per month, at five scenes a day for each user:
 
 | Users | Scenes a month | Model and speech in | With paid voice added |
 | --- | --- | --- | --- |
-| 5 | 750 | $2.44 | $50 |
-| 100 | 15,000 | $49 | $1,009 |
-| 1,000 | 150,000 | $488 | $10,088 |
+| 5 | 750 | $2.63 | $51 |
+| 100 | 15,000 | $53 | $1,013 |
+| 1,000 | 150,000 | $525 | $10,125 |
 
-About $0.49 per user per month without paid voice, and about $10 with it.
+About $0.53 per user per month without paid voice, and about $10 with it.
 
 **What follows**
 
 - Ship with captions and the built-in Windows voice. Offer the premium voice later as a paid extra.
 - At 100 users, speech to text is about 167 hours a month, so the free 333 hours last about two months at that size.
 
-**Assumptions.** Two cropped pieces per scene, 8 seconds of speech per question, 320 spoken characters per answer, about 450 output tokens per turn including thinking. These are estimates. The cost model is in `prototype/test_core.js`. Replace the assumptions with measured numbers once the director exists.
+**Assumptions.** One full 1920 by 1200 screenshot per scene, sent with the first question only, 8 seconds of speech per question, 320 spoken characters per answer, about 450 output tokens per turn including thinking. These are estimates. The cost model is in `prototype/test_core.js`. Replace the assumptions with measured numbers once the director exists.
 
 ## When to sign up for what
 
@@ -135,9 +135,9 @@ The owner's PC runs Windows on x64. Clicky is Mac-only with Windows on a waitlis
 
 **Privacy**
 
-- Say plainly in the app what leaves the PC: the boxed pieces go to the model provider and voice audio goes to the speech provider.
+- Say plainly in the app what leaves the PC: a screenshot of the screen goes to the model provider with each new question, and voice audio goes to the speech provider. The screenshot can include other windows and notifications.
 - Anthropic's documentation says images sent through the API are not used to train models and are deleted after processing. Read AssemblyAI's and ElevenLabs' terms before phase 3.
-- Lecture slides and exams belong to professors. Do not store captured pieces on the server or share them between users.
+- Lecture slides and exams belong to professors. Do not store screenshots on the server or share them between users.
 
 **Free plans**
 
