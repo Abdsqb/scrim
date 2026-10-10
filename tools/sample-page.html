@@ -92,8 +92,11 @@ window.build = (spec) => {
     const rs = (e.matches('.eq') ? leaves(e).map((b) => b.getBoundingClientRect()) : [e.getBoundingClientRect()]).filter((q) => q.width > 0);
     if (!rs.length) throw new Error('no visible glyphs in piece ' + e.dataset.piece);
     const x0 = Math.min(...rs.map((q) => q.left)), y0 = Math.min(...rs.map((q) => q.top)), x1 = Math.max(...rs.map((q) => q.right)), y1 = Math.max(...rs.map((q) => q.bottom));
-    const r = { x: x0, y: y0, width: x1 - x0, height: y1 - y0 }, k = devicePixelRatio;
-    return { id: e.dataset.piece, kind: e.matches('.eq') ? 'equation' : 'code', box: [r.x, r.y, r.width, r.height].map(v => Math.round(v * k)) };
+    const r = { x: x0, y: y0, width: x1 - x0, height: y1 - y0 }, k = devicePixelRatio, px = (q) => [q.x, q.y, q.width, q.height].map((v) => Math.round(v * k));
+    const piece = { id: e.dataset.piece, kind: e.matches('.eq') ? 'equation' : 'code', box: px(r) };
+    // A code panel can be much wider than its text (a notebook cell spans the page). Boxing just the text is as good an answer.
+    if (piece.kind === 'code') { const q = document.createRange(); q.selectNodeContents(e); piece.text = px(q.getBoundingClientRect()); }
+    return piece;
   }));
 };
 </script>

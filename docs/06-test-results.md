@@ -33,6 +33,26 @@ Run on 2026-10-10 on the same PC, at 100% scaling, against the sample notes page
 
 Not tested: a real PDF with a real mouse, which is what "done" means for step 1.
 
+## Casting (step 4, first test)
+
+Run on 2026-10-10 against the ten made-up screens from `npm run samples` (PDF viewer, course site, slides, notebook, each with decoy equations or code), using `npm run cast`: Claude Haiku 5.5, effort low, screenshot sent at 1568 by 980.
+
+| Measure | Result |
+| --- | --- |
+| Right pieces picked, decoys skipped | 48 of 49 screen runs over five runs. The one miss left out the distance formula on the k-NN screen once and got it on every other run |
+| Box overlap with the truth (IoU), mean | 0.88 to 0.89 as the model gives it, 0.90 after snapping |
+| Equations after snapping | Within 3 to 7 px of the truth on every edge |
+| Code panels after snapping | Within 0 to 1 px, except notebook cells (below) |
+| Time to the first piece | Mean 1.6 to 1.8 s. Up to 3.8 s on screens where the model wrote 500 to 850 output tokens. The target is about 1 s |
+| Cost | About $0.0004 per screen, $0.004 for all ten |
+
+Notes:
+- **Snapping** (`snap()` in `prototype/casting.js`) was tuned on `npm run cast -- --dry`, which jitters the true boxes by up to 20 px with no API call: every piece lands within 0 to 7 px. If snapping reaches the edge of its search area it keeps the model's box rather than swallow neighbouring content.
+- **Notebook cells** are grey bars as wide as the page. The model boxes the code text plus some of the bar, and snapping leaves that box alone. It contains all the code, with extra grey.
+- **Bug found and fixed:** the validator joined equation parts with no space, so `\Rightarrow` followed by `T(n)` read as the unknown command `\RightarrowT` and a correct piece was rejected.
+- The screens are generated, so they are cleaner than real PDFs. Repeat on real course notes before trusting these numbers.
+- Not yet tried: thinking off, a reply that sends every box before any content (so pieces lift sooner), Claude Sonnet 5.5, Gemini.
+
 ## Linux (first prototype)
 
 Everything below was run on 2026-10-10 on a Linux virtual display at 1440 by 900 with software drawing, using Electron 44.7.0 and KaTeX 0.19.0.

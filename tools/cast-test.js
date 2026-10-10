@@ -40,7 +40,7 @@ app.whenReady().then(async () => {
       const t0 = performance.now(); let tFirst = null;
       const parser = casting.lineParser((p) => {
         if (p.kind === 'none') { bad.push('none: ' + p.reason); return; }
-        const err = casting.validate(p, sw, sh); if (err) { bad.push(err); return; }
+        const err = casting.validate(p, sw, sh); if (err) { bad.push(err); console.log('[cast]   rejected piece: ' + JSON.stringify(p)); return; }
         if (tFirst == null) tFirst = performance.now() - t0;
         const box = p.box.map((v) => v * k);            // back to screen pixels
         pieces.push({ ...p, box, snapped: casting.snap(px, W, H, box) });
@@ -65,9 +65,11 @@ app.whenReady().then(async () => {
       spent += cost;
 
       // Score: each model piece is matched to the true piece it overlaps most.
-      for (const p of pieces) { let best = null; for (const q of t.pieces) { const v = iou(p.box, q.box); if (!best || v > best.v) best = { q, v }; } p.match = best && best.v > 0.1 ? best.q.id : null; }
+      const near = (b, q) => Math.max(iou(b, q.box), q.text ? iou(b, q.text) : 0);   // a code piece may be boxed by its panel or by its text
+      for (const p of pieces) { let best = null; for (const q of t.pieces) { const v = near(p.box, q); if (!best || v > best.v) best = { q, v }; } p.match = best && best.v > 0.1 ? best.q.id : null; }
       const found = t.expect.map((id) => { const p = pieces.find((pp) => pp.match === id), q = t.pieces.find((qq) => qq.id === id);
-        return p ? { id, raw: iou(p.box, q.box), snapped: iou(p.snapped, q.box), rawEdge: edgeErr(p.box, q.box), snapEdge: edgeErr(p.snapped, q.box) } : { id, missing: true }; });
+        const tb = (b) => (q.text && iou(b, q.text) > iou(b, q.box) ? q.text : q.box);   // score against whichever box the answer is closer to
+        return p ? { id, raw: near(p.box, q), snapped: near(p.snapped, q), rawEdge: edgeErr(p.box, tb(p.box)), snapEdge: edgeErr(p.snapped, tb(p.snapped)) } : { id, missing: true }; });
       const extra = pieces.filter((p) => !t.expect.includes(p.match)).map((p) => p.match || 'nothing');
       const right = found.every((f) => !f.missing) && !extra.length;
       results.push({ t, pieces, found, extra, right, bad, tFirst, total, u, cost, stop: msg.stop_reason });
@@ -82,6 +84,8 @@ app.whenReady().then(async () => {
     console.log(`[cast] SUMMARY right pieces on ${ok}/${n} | mean IoU ${avg(all.map((f) => f.raw)).toFixed(2)} raw, ${avg(all.map((f) => f.snapped)).toFixed(2)} snapped` +
       ` | mean first piece ${(avg(results.filter((r) => r.tFirst != null).map((r) => r.tFirst)) / 1000).toFixed(2)} s | spent $${spent.toFixed(4)}`);
     fs.writeFileSync(path.join(S, 'cast-report.html'), report(results, { MODEL, EFFORT, SEND_W, spent }));
+    fs.writeFileSync(path.join(S, 'cast-results.json'), JSON.stringify(results.map((r) => ({ file: r.t.file, right: r.right, found: r.found, extra: r.extra, rejected: r.bad,
+      pieces: r.pieces.map(({ piece, kind, box, snapped, match, parts, lines }) => ({ piece, kind, match, box: box.map(Math.round), snapped, parts, lines })) })), null, 2));
     console.log('[cast] report: ' + path.join(S, 'cast-report.html'));
   } catch (e) {
     if (e instanceof Anthropic.AuthenticationError) console.log('[cast] ERROR the API key was rejected. Check .env');
