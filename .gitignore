@@ -1,0 +1,9 @@
+node_modules/
+prototype/frames/
+dist/
+out/
+.env
+.env.*
+.dev.vars
+CLAUDE.local.md
+*.log

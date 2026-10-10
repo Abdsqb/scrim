@@ -1,0 +1,281 @@
+<!doctype html>
+<meta charset="utf-8">
+<link rel="stylesheet" href="../node_modules/katex/dist/katex.min.css">
+<style>
+  html, body { margin: 0; height: 100%; overflow: hidden; background: #000; }
+  #shot { position: absolute; inset: 0; width: 100%; height: 100%; transform-origin: 50% 46%; will-change: transform, filter; }
+  #veil { position: absolute; inset: 0; opacity: 0; background: radial-gradient(ellipse at 50% 42%, rgba(6,8,14,.34) 0%, rgba(2,3,6,.88) 80%); }
+  #layer, #ink { position: absolute; inset: 0; width: 100%; height: 100%; }
+  #ink { pointer-events: none; overflow: visible; }
+  .piece { position: absolute; transform-origin: 0 0; border-radius: 6px; background-repeat: no-repeat; opacity: 0; }
+  .piece.neg { filter: invert(1) grayscale(1) contrast(2.8); mix-blend-mode: screen; }
+  .row { position: absolute; display: flex; align-items: baseline; white-space: nowrap; color: #fff; }
+  .part { display: inline-block; transform-origin: 50% 60%; }
+  .ghost { position: absolute; white-space: nowrap; transform-origin: 0 0; pointer-events: none; }
+  .code { position: absolute; font-family: "DejaVu Sans Mono", Consolas, monospace; color: #f2f2f2; white-space: pre; line-height: 1.75; }
+  .code .ln { display: block; }
+  .code .no { color: #6f7480; display: inline-block; width: 2.2em; }
+  .label { position: absolute; font: 600 15px "DejaVu Sans", "Segoe UI", sans-serif; transform: translateX(-50%); white-space: nowrap; opacity: 0; }
+  #caption { position: absolute; left: 0; right: 0; bottom: 64px; text-align: center; font: 23px/1.4 "DejaVu Sans", "Segoe UI", sans-serif; color: #f1f1f1;
+             text-shadow: 0 2px 14px rgba(0,0,0,.9); opacity: 0; }
+  #ask { position: absolute; left: 50%; top: 54px; transform: translateX(-50%); font: 16px "DejaVu Sans", "Segoe UI", sans-serif; color: #cfd3dc;
+         border: 1px solid rgba(255,255,255,.22); border-radius: 999px; padding: 7px 16px; background: rgba(255,255,255,.06); opacity: 0; white-space: nowrap; }
+  #ask b { color: #fff; font-weight: 600; }
+</style>
+<img id="shot">
+<div id="veil"></div>
+<div id="layer"></div>
+<svg id="ink"></svg>
+<div id="ask"></div>
+<div id="caption"></div>
+<script src="../node_modules/katex/dist/katex.min.js"></script>
+<script>
+// ---------- clock and tweens: every motion runs on one clock, so a scene can play live or be stepped frame by frame ----------
+const clock = { now: 0, manual: false, rate: 1 };
+const active = new Set();
+const smooth = (t) => { const s = 1 - t; return t * t * t * (10 * s * s + 5 * s * t + t * t); };   // manim's default rate function
+const linear = (t) => t, rushFrom = (t) => 1 - Math.pow(1 - t, 3), thereAndBack = (t) => smooth(t < .5 ? 2 * t : 2 * (1 - t));
+const lerp = (a, b, t) => a + (b - a) * t, clamp01 = (t) => Math.max(0, Math.min(1, t));
+function tween(ms, fn, ease = smooth, delay = 0) {
+  return new Promise((resolve) => { if (fn) fn(ease(0)); active.add({ t0: clock.now + delay, ms: Math.max(1, ms), fn, ease, resolve }); });
+}
+const hold = (ms) => tween(ms, null);
+function step() {
+  for (const a of [...active]) {
+    const p = (clock.now - a.t0) / a.ms; if (p < 0) continue;
+    if (a.fn) a.fn(a.ease(clamp01(p)));
+    if (p >= 1) { active.delete(a); a.resolve(); }
+  }
+}
+window.advance = (dt) => { clock.now += dt; step(); };
+// Live mode: the clock follows the display's frames. `clock.rate` speeds time up, which is how Esc ends a scene quickly.
+let liveOn = false, lastFrame = null;
+function live() {
+  clock.manual = false; if (liveOn) return; liveOn = true;
+  const loop = (t) => { if (!clock.manual) { if (lastFrame != null) clock.now += Math.min(t - lastFrame, 100) * clock.rate; step(); } lastFrame = t; requestAnimationFrame(loop); };
+  requestAnimationFrame(loop);
+}
+const lagged = (items, each, stagger, fn, ease) => Promise.all(items.map((it, i) => tween(each, (t) => fn(it, t, i), ease, i * stagger)));
+
+// ---------- helpers ----------
+const $ = (id) => document.getElementById(id), layer = $('layer'), ink = $('ink');
+const PAL = { white: '#ffffff', blue: '#58C4DD', teal: '#5CD0B3', green: '#83C167', yellow: '#FFE94E', gold: '#F0AC5F', red: '#FC6255', pink: '#D147BD', grey: '#9aa0ab' };
+const rgb = (hex) => [1, 3, 5].map(i => parseInt(hex.slice(i, i + 2), 16));
+const mixc = (a, b, t) => { const x = rgb(a), y = rgb(b); return `rgb(${x.map((v, i) => Math.round(lerp(v, y[i], t))).join(',')})`; };
+const KOPT = { trust: (c) => c.command === '\\htmlId', strict: false, throwOnError: true, output: 'html' };
+const glyphs = (el) => [...el.querySelectorAll('.katex-html span')].filter(s => s.childElementCount === 0 && s.textContent.trim());
+function box(el) {                                    // tight box around the visible glyphs of a math element
+  const g = glyphs(el); if (!g.length) return el.getBoundingClientRect();
+  let x0 = 1e9, y0 = 1e9, x1 = -1e9, y1 = -1e9;
+  for (const s of g) { const r = s.getBoundingClientRect(); if (!r.width) continue; x0 = Math.min(x0, r.left); y0 = Math.min(y0, r.top); x1 = Math.max(x1, r.right); y1 = Math.max(y1, r.bottom); }
+  return { x: x0, y: y0, width: x1 - x0, height: y1 - y0, left: x0, top: y0, right: x1, bottom: y1, cx: (x0 + x1) / 2, cy: (y0 + y1) / 2 };
+}
+const svg = (tag, attrs) => { const e = document.createElementNS('http://www.w3.org/2000/svg', tag); for (const k in attrs) e.setAttribute(k, attrs[k]); ink.appendChild(e); return e; };
+const drawOn = (path, ms, delay = 0) => { path.setAttribute('pathLength', 1); path.style.strokeDasharray = 1; return tween(ms, (t) => { path.style.strokeDashoffset = 1 - t; }, smooth, delay); };
+// "Write": each glyph is outlined first, then filled, left to right.
+function write(el, color = '#ffffff', each = 420, stagger = 55) {
+  const g = glyphs(el), c = rgb(color).join(',');
+  el.style.visibility = 'visible';
+  return lagged(g, each, stagger, (s, t) => {
+    const stroke = t < .5 ? t * 2 : 2 - t * 2, fill = clamp01((t - .35) / .65);
+    s.style.color = `rgba(${c},${fill})`; s.style.webkitTextStroke = `0.9px rgba(${c},${Math.max(stroke, 0)})`;
+    if (t >= 1) { s.style.color = ''; s.style.webkitTextStroke = ''; }
+  }, linear).then(() => { el.style.color = color === '#ffffff' ? '' : color; });
+}
+function ghost(tex, size, color, at) {                // a free-floating copy of a term, placed exactly over `at`
+  const g = document.createElement('div'); g.className = 'ghost'; g.style.fontSize = size + 'px'; g.style.color = color;
+  katex.render(tex, g, KOPT); layer.appendChild(g); g.style.left = '0px'; g.style.top = '0px';
+  const b = box(g); g.style.transformOrigin = `${b.left}px ${b.top}px`; g.style.left = (at.left - b.left) + 'px'; g.style.top = (at.top - b.top) + 'px';
+  return g;
+}
+function fly(els, base, to, ms, { s0 = 1, scaleTo = 1, startCx = base.cx, startCy = base.cy, arc = 0.18, fadeOut = false, ease = smooth } = {}) {   // move along a gentle arc
+  els = [].concat(els); const dx = to.cx - startCx, dy = to.cy - startCy, len = Math.hypot(dx, dy) || 1, nx = -dy / len, ny = dx / len, bend = len * arc;
+  const w = base.width, h = base.height;
+  return tween(ms, (t) => {
+    const s = lerp(s0, scaleTo, t), k = 4 * t * (1 - t) * bend;
+    const cx = startCx + dx * t + nx * k, cy = startCy + dy * t + ny * k;
+    for (const el of els) { el.style.transform = `translate(${cx - base.cx - (w * s - w) / 2}px, ${cy - base.cy - (h * s - h) / 2}px) scale(${s})`;
+      if (fadeOut) el.style.opacity = 1 - clamp01((t - .72) / .28); }
+  }, ease);
+}
+function inkBox(rect) {
+  const d = stage.px.getImageData(rect.x, rect.y, rect.w, rect.h).data, w = rect.w, h = rect.h, i0 = (2 * w + 2) * 4, bg = [d[i0], d[i0 + 1], d[i0 + 2]];
+  let x0 = w, y0 = h, x1 = -1, y1 = -1;
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) { const i = (y * w + x) * 4;
+    if (Math.abs(d[i] - bg[0]) + Math.abs(d[i + 1] - bg[1]) + Math.abs(d[i + 2] - bg[2]) > 110) { if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y; } }
+  if (x1 < 0) return { cx: rect.x + w / 2, cy: rect.y + h / 2, width: w, height: h };
+  return { cx: rect.x + (x0 + x1 + 1) / 2, cy: rect.y + (y0 + y1 + 1) / 2, width: x1 - x0 + 1, height: y1 - y0 + 1 };
+}
+const stage = { pieces: {}, rows: {}, parts: {}, code: null, done: true, receded: false, shotSrc: '' };
+
+// ---------- the moves ----------
+const moves = {
+  async recede() {                                    // the page falls back, out of focus, and the scene goes dark
+    await Promise.all([
+      tween(900, (t) => { $('shot').style.transform = `scale(${lerp(1, .95, t)})`; $('shot').style.filter = `blur(${lerp(0, 9, t)}px) brightness(${lerp(1, .32, t)}) saturate(${lerp(1, .5, t)})`; }),
+      tween(900, (t) => { $('veil').style.opacity = t; }),
+    ]);
+    stage.receded = true;
+  },
+  async lift({ piece, rect }) {                       // a piece of the page pops off it
+    const els = ['pos', 'neg'].map((cls) => { const d = document.createElement('div'); d.className = 'piece ' + cls;
+      Object.assign(d.style, { left: rect.x + 'px', top: rect.y + 'px', width: rect.w + 'px', height: rect.h + 'px', backgroundImage: `url(${stage.shotSrc})`,
+        backgroundSize: `${innerWidth}px ${innerHeight}px`, backgroundPosition: `-${rect.x}px -${rect.y}px` }); layer.appendChild(d); return d; });
+    const base = { cx: rect.x + rect.w / 2, cy: rect.y + rect.h / 2, width: rect.w, height: rect.h };
+    stage.pieces[piece] = { els, rect, base };
+    await tween(380, (t) => { const s = 1 + .06 * t;
+      for (const el of els) el.style.transform = `translate(${-(rect.w * s - rect.w) / 2}px, ${-8 * t - (rect.h * s - rect.h) / 2}px) scale(${s})`;
+      els[0].style.opacity = t; els[0].style.boxShadow = `0 ${16 * t}px ${46 * t}px rgba(0,0,0,${.65 * t})`; }, rushFrom);
+  },
+  // Send a lifted piece to where its live version sits, turning from "photo of the page" into light-on-dark as it goes.
+  async _dissolve(piece, target, ms = 1000) {
+    const p = stage.pieces[piece]; if (!p) return null; const { els, rect, base } = p, [pos, neg] = els, ink = inkBox(rect);
+    const s = target.width / ink.width, to = { cx: target.cx - s * (ink.cx - base.cx), cy: target.cy - s * (ink.cy - base.cy) };
+    await Promise.all([
+      fly(els, base, to, ms, { s0: 1.06, scaleTo: s, startCy: base.cy - 8, arc: 0.1 }),
+      tween(ms * .6, (t) => { pos.style.opacity = 1 - t; pos.style.boxShadow = `0 16px 46px rgba(0,0,0,${.65 * (1 - t)})`; neg.style.opacity = t; }, smooth, ms * .2),
+    ]);
+    pos.remove(); delete stage.pieces[piece]; return neg;
+  },
+  async write({ piece, row, at, size = 44, anchor = 'center', dim = false, parts }) {   // an equation as separate, movable terms
+    const r = document.createElement('div'); r.className = 'row'; r.id = 'row-' + row; r.style.fontSize = size + 'px'; if (dim) r.style.color = PAL.grey;
+    const made = parts.map((p, i) => { const s = document.createElement('span'); s.className = 'part'; if (p.id) s.id = p.id;
+      katex.render(p.tex, s, KOPT); r.appendChild(s); const rec = { ...p, el: s, row, size }; if (p.id) stage.parts[p.id] = rec; return rec; });
+    layer.appendChild(r); stage.rows[row] = { el: r, parts: made, size };
+    r.style.left = at.x + 'px'; r.style.top = at.y + 'px'; r.style.transform = anchor === 'center' ? 'translate(-50%, -50%)' : 'translate(0, -50%)';
+    made.forEach(p => { if (p.hidden) p.el.style.visibility = 'hidden'; });
+    if (piece && stage.pieces[piece]) {
+      r.style.opacity = 0; const neg = await moves._dissolve(piece, box(r));
+      await tween(420, (t) => { r.style.opacity = t; neg.style.opacity = 1 - t; }); neg.remove(); return;
+    }
+    for (const g of glyphs(r)) { g.style.color = 'rgba(0,0,0,0)'; }
+    const jobs = [];
+    for (const p of made) {
+      if (p.hidden) continue;
+      const color = PAL[p.color] || (dim ? PAL.grey : PAL.white);
+      if (p.from && stage.parts[p.from]) {            // this term arrives from another row: a copy travels over, then becomes the real one
+        const src = stage.parts[p.from], a = box(src.el), b = box(p.el);
+        const g = ghost(src.tex, src.size, getComputedStyle(src.el).color.startsWith('rgb') ? rgbToHex(getComputedStyle(src.el).color) : PAL.white, a);
+        const sc = Math.max(.2, b.height / Math.max(a.height, 1));
+        jobs.push(fly(g, { ...a }, b, 900, { scaleTo: sc, arc: -0.16 }).then(() => { for (const s of glyphs(p.el)) s.style.color = ''; p.el.style.color = color === PAL.white ? '' : color; g.remove(); }));
+      } else jobs.push(write(p.el, color, 380, 45));
+    }
+    await Promise.all(jobs);
+  },
+  async code({ piece, at, size = 22, lines }) {       // the algorithm as numbered lines
+    const c = document.createElement('div'); c.className = 'code'; c.style.fontSize = size + 'px'; c.style.left = at.x + 'px'; c.style.top = at.y + 'px';
+    const els = lines.map((t, i) => { const l = document.createElement('span'); l.className = 'ln'; l.id = 'ln-' + (i + 1); l.style.opacity = 0;
+      const n = document.createElement('span'); n.className = 'no'; n.textContent = i + 1; const b = document.createElement('span'); b.className = 'tx'; b.textContent = t; l.append(n, b); c.appendChild(l); return l; });
+    layer.appendChild(c); stage.code = c; const nos = els.map(l => l.querySelector('.no')), txs = els.map(l => l.querySelector('.tx'));
+    if (piece && stage.pieces[piece]) {
+      let x0 = 1e9, y0 = 1e9, x1 = -1e9, y1 = -1e9; for (const t of txs) { const q = document.createRange(); q.selectNodeContents(t); const b = q.getBoundingClientRect(); x0 = Math.min(x0, b.left + leadPx(t, size)); y0 = Math.min(y0, b.top); x1 = Math.max(x1, b.right); y1 = Math.max(y1, b.bottom); }
+      nos.forEach(n => { n.style.opacity = 0; }); els.forEach(l => { l.style.opacity = 1; }); c.style.opacity = 0;
+      const neg = await moves._dissolve(piece, { cx: (x0 + x1) / 2, cy: (y0 + y1) / 2, width: x1 - x0, height: y1 - y0 });
+      await tween(420, (t) => { c.style.opacity = t; neg.style.opacity = 1 - t; }); neg.remove();
+      await lagged(nos, 300, 70, (n, t) => { n.style.opacity = t; });
+      return;
+    }
+    await lagged(els, 420, 90, (l, t) => { l.style.opacity = t; l.style.transform = `translateX(${lerp(-14, 0, t)}px)`; });
+  },
+  async split({ row }) {                              // the terms drift apart so each can be picked up on its own
+    const r = stage.rows[row]; const named = r.parts.filter(p => p.id);
+    await Promise.all([
+      tween(650, (t) => { for (const p of named) { p.el.style.marginLeft = p.el.style.marginRight = (0.16 * t) + 'em'; } }),
+      lagged(named, 500, 80, (p, t) => { p.el.style.transform = `translateY(${-7 * t}px) scale(${1 + .07 * t})`; }, thereAndBack),
+    ]);
+  },
+  async indicate({ id, color = 'yellow' }) {
+    const p = stage.parts[id]; const base = getComputedStyle(p.el).color; const from = rgbToHex(base);
+    await tween(620, (t) => { p.el.style.transform = `scale(${1 + .2 * t})`; p.el.style.color = mixc(from, PAL[color], t); }, thereAndBack);
+    p.el.style.color = from === PAL.white ? '' : from;
+  },
+  async match({ term, line, span, color = 'blue', label, say }) {
+    const p = stage.parts[term], ln = $('ln-' + line); if (!p || !ln) throw new Error(`match target missing: ${term} / line ${line}`);
+    const col = PAL[color] || PAL.blue; if (say) moves.say({ text: say });
+    // 1. the term takes its color and swells for a moment
+    await tween(520, (t) => { p.el.style.color = mixc(PAL.white, col, clamp01(t * 1.6)); p.el.style.transform = `scale(${1 + .16 * thereAndBack(t)})`; }, linear);
+    // 2. a brace draws itself under the term, with a short label
+    const b = box(p.el), y = b.bottom + 9, h = 9, xm = b.cx;
+    const brace = svg('path', { d: `M${b.left} ${y} C ${b.left} ${y + h}, ${xm - 12} ${y + 1}, ${xm} ${y + h * 1.7} C ${xm + 12} ${y + 1}, ${b.right} ${y + h}, ${b.right} ${y}`, fill: 'none', stroke: col, 'stroke-width': 2, 'stroke-linecap': 'round' });
+    const lab = document.createElement('div'); lab.className = 'label'; lab.textContent = label || ('line ' + line); lab.style.color = col; lab.style.left = xm + 'px'; lab.style.top = (y + h * 1.7 + 7) + 'px'; layer.appendChild(lab);
+    drawOn(brace, 420); tween(360, (t) => { lab.style.opacity = t; lab.style.transform = `translateX(-50%) translateY(${lerp(6, 0, t)}px)`; }, smooth, 220);
+    // 3. a copy of the term travels down to the code and lands on the words it stands for
+    const tok = wrapText(ln.querySelector('.tx'), span) || ln.querySelector('.tx'), tr = tok.getBoundingClientRect();
+    const target = { cx: tr.left + tr.width / 2, cy: tr.top + tr.height / 2, width: tr.width, height: tr.height };
+    const g = ghost(p.tex, p.size, col, b), sc = Math.min(1, Math.max(.35, tr.height / Math.max(b.height, 1) * .95));
+    const frame = svg('rect', { x: tr.left - 6, y: tr.top - 1, width: tr.width + 12, height: tr.height + 2, rx: 5, fill: col, 'fill-opacity': 0, stroke: col, 'stroke-width': 1.6 }); frame.style.strokeDasharray = 1; frame.style.strokeDashoffset = 1;
+    await Promise.all([
+      fly(g, b, target, 980, { scaleTo: sc, arc: 0.2, fadeOut: true }),
+      tween(420, (t) => { tok.style.color = mixc('#f2f2f2', col, t); frame.setAttribute('fill-opacity', .14 * t); }, smooth, 700),
+      drawOn(frame, 520, 640),
+    ]);
+    g.remove();
+  },
+  async ask({ text }) { const a = $('ask'); a.innerHTML = 'You: <b></b>'; a.querySelector('b').textContent = text;
+    await tween(420, (t) => { a.style.opacity = t; a.style.transform = `translateX(-50%) translateY(${lerp(-8, 0, t)}px)`; }); },
+  async swap({ id, tex, color }) {                    // a term turns into something else, and its neighbors slide to make room
+    const p = stage.parts[id], row = stage.rows[p.row], col = PAL[color] || rgbToHex(getComputedStyle(p.el).color);
+    const before = row.parts.map(q => q.el.getBoundingClientRect()), old = ghost(p.tex, p.size, col, box(p.el));
+    p.tex = tex; katex.render(tex, p.el, KOPT); for (const s of glyphs(p.el)) s.style.color = 'rgba(0,0,0,0)';
+    const after = row.parts.map(q => q.el.getBoundingClientRect());
+    await Promise.all([
+      tween(520, (t) => { row.parts.forEach((q, i) => { if (q !== p) q.el.style.transform = `translateX(${(before[i].left - after[i].left) * (1 - t)}px)`; }); }),
+      tween(380, (t) => { old.style.opacity = 1 - t; old.style.transform = `translateY(${-16 * t}px)`; }),
+      tween(520, (t) => { p.el.style.transform = `translateY(${lerp(14, 0, t)}px)`; }),
+      write(p.el, col, 320, 40),
+    ]);
+    old.remove(); row.parts.forEach(q => { q.el.style.transform = ''; });
+  },
+  async show({ id, color = 'white' }) { const p = stage.parts[id], col = PAL[color]; p.hidden = false; await write(p.el, col, 380, 50);
+    const b = box(p.el), R = Math.max(b.width, b.height) / 2 + 10;
+    const rays = Array.from({ length: 12 }, (_, i) => ({ a: i / 12 * Math.PI * 2, el: svg('line', { stroke: PAL.yellow, 'stroke-width': 2.2, 'stroke-linecap': 'round' }) }));
+    await Promise.all([
+      tween(560, (t) => { p.el.style.transform = `scale(${1 + .22 * t})`; }, thereAndBack),
+      tween(620, (t) => { for (const r of rays) { const r0 = R + 26 * t, r1 = R + 6 + 34 * Math.sqrt(t), c = Math.cos(r.a), s2 = Math.sin(r.a);
+        r.el.setAttribute('x1', b.cx + c * r0); r.el.setAttribute('y1', b.cy + s2 * r0); r.el.setAttribute('x2', b.cx + c * Math.max(r0, r1)); r.el.setAttribute('y2', b.cy + s2 * Math.max(r0, r1)); r.el.style.opacity = 1 - t * t; } }, rushFrom),
+    ]);
+    rays.forEach(r => r.el.remove()); },
+  async say({ text }) { const c = $('caption');
+    if (c.textContent) await tween(200, (t) => { c.style.opacity = 1 - t; c.style.transform = `translateY(${-8 * t}px)`; });
+    c.textContent = text; await tween(380, (t) => { c.style.opacity = t; c.style.transform = `translateY(${lerp(10, 0, t)}px)`; }); },
+  async hold({ ms }) { await hold(ms); },
+  async restore() {                                   // everything lets go and the page comes back into focus
+    const things = [...layer.children, ...ink.children, $('caption'), $('ask')];
+    await lagged(things, 380, 18, (e, t) => { e.style.opacity = (e._o0 ?? (e._o0 = parseFloat(getComputedStyle(e).opacity))) * (1 - t); });
+    if (stage.receded) await Promise.all([
+      tween(800, (t) => { $('shot').style.transform = `scale(${lerp(.95, 1, t)})`; $('shot').style.filter = `blur(${lerp(9, 0, t)}px) brightness(${lerp(.32, 1, t)}) saturate(${lerp(.5, 1, t)})`; }),
+      tween(800, (t) => { $('veil').style.opacity = 1 - t; }),
+    ]);
+    stage.receded = false; $('veil').style.opacity = 0;
+    layer.innerHTML = ''; ink.innerHTML = ''; $('caption').textContent = ''; $('caption').style.opacity = 0; $('ask').style.opacity = 0;
+    $('shot').style.transform = ''; $('shot').style.filter = ''; stage.pieces = {}; stage.rows = {}; stage.parts = {}; stage.code = null;
+  },
+};
+function leadPx(tx, size) { const m = tx.textContent.match(/^ */)[0].length; const probe = document.createElement('span'); probe.textContent = '0'.repeat(10); probe.style.visibility = 'hidden'; tx.appendChild(probe); const w = probe.getBoundingClientRect().width / 10; probe.remove(); return m * w; }
+function rgbToHex(c) { const m = c.match(/\d+/g).slice(0, 3).map(Number); return '#' + m.map(v => v.toString(16).padStart(2, '0')).join(''); }
+function wrapText(el, sub) {                          // put <span> around the first occurrence of `sub` inside el's text
+  if (!sub) return null; const w = document.createTreeWalker(el, NodeFilter.SHOW_TEXT); let n;
+  while ((n = w.nextNode())) { const i = n.nodeValue.indexOf(sub); if (i < 0) continue;
+    const mid = n.splitText(i); mid.splitText(sub.length); const s = document.createElement('span'); s.className = 'tok'; mid.parentNode.insertBefore(s, mid); s.appendChild(mid); return s; }
+  return null;
+}
+window.freeze = async (src) => { stage.shotSrc = src; const im = $('shot'); im.src = src; await im.decode();
+  const c = document.createElement('canvas'); c.width = innerWidth; c.height = innerHeight; stage.px = c.getContext('2d', { willReadFrequently: true }); stage.px.drawImage(im, 0, 0, innerWidth, innerHeight); };
+// Play a script: an array of moves, in order. Resolves when the stage is clean again.
+// A scene always ends restored, whether it finished, was ended with abort(), or a move failed.
+window.run = async (script, { manual = false, gap = 260 } = {}) => {
+  stage.done = false; stage.error = null; stage.aborted = false; stage.restored = false; clock.rate = 1; clock.manual = manual; if (!manual) live();
+  try {
+    for (const m of script) {
+      if (stage.aborted) break;
+      const f = moves[m.move]; if (!f || m.move.startsWith('_')) throw new Error('unknown move ' + m.move);
+      await f(m); if (m.move === 'restore') stage.restored = true;
+      if (m.move !== 'hold' && m.pause !== 0) await hold(m.pause ?? gap);
+    }
+  } catch (e) { stage.error = String(e && e.stack || e); }
+  if (!stage.restored) { clock.rate = 1.6; try { await moves.restore(); } catch (e) { stage.error = stage.error || String(e); } }
+  clock.rate = 1; stage.done = true; return window.state();
+};
+window.abort = () => { if (stage.done) return; stage.aborted = true; clock.rate = 8; };   // finish the current move fast, then restore
+window.state = () => ({ done: stage.done, error: stage.error, aborted: !!stage.aborted, now: Math.round(clock.now), active: active.size });
+</script>

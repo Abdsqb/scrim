@@ -1,0 +1,19 @@
+{
+  "name": "screen-explainer",
+  "version": "0.0.1",
+  "private": true,
+  "description": "Turns whatever is on your screen into an explainer video you can interrupt.",
+  "main": "prototype/live.js",
+  "scripts": {
+    "start": "electron prototype/live.js",
+    "demo:auto": "electron prototype/live.js --auto",
+    "record": "electron prototype/record.js",
+    "test": "node prototype/test_core.js"
+  },
+  "dependencies": {
+    "katex": "0.19.0"
+  },
+  "devDependencies": {
+    "electron": "44.7.0"
+  }
+}

@@ -1,0 +1,37 @@
+<!doctype html>
+<meta charset="utf-8">
+<link rel="stylesheet" href="../node_modules/katex/dist/katex.min.css">
+<style>
+  body { margin: 0; font: 16px/1.6 Georgia, serif; background: #fbfaf6; color: #222; }
+  .page { width: 760px; margin: 32px auto; }
+  h1 { font-size: 26px; margin: 0 0 4px; } h2 { font-size: 18px; margin: 22px 0 6px; }
+  .eq { padding: 10px 16px; margin: 8px 0; font-size: 20px; display: inline-block; }
+  pre { font: 15px/1.7 Consolas, "DejaVu Sans Mono", monospace; background: #f1efe8; padding: 12px 16px; border-radius: 6px; margin: 8px 0; display: inline-block; }
+  p { margin: 6px 0; }
+  .hint { margin-top: 40px; font: 13px "Segoe UI", "DejaVu Sans", sans-serif; color: #8a877d; }
+</style>
+<div class="page">
+  <h1>Lecture 14: Shortest paths</h1>
+  <p>CS 331 &middot; Dijkstra's algorithm and the relaxation step</p>
+  <h2>14.2 Relaxation</h2>
+  <p>Every shortest-path algorithm in this unit is built on one update rule. For an edge from u to v with weight w(u,v), the tentative distance to v is improved whenever going through u is shorter:</p>
+  <div class="eq" id="equation"></div>
+  <p>The rule never increases a distance, and once a vertex is removed from the queue its distance is final, provided all weights are non-negative.</p>
+  <h2>14.3 The algorithm</h2>
+  <pre id="algorithm">for each neighbor v of u:
+    alt = d[u] + w(u, v)
+    if alt &lt; d[v]:
+        d[v] = alt
+        prev[v] = u</pre>
+  <p>With a binary heap the running time is O((V + E) log V). Section 14.4 shows why negative weights break the argument above.</p>
+  <p class="hint">Demo page. <span id="hotkey">Ctrl+Alt+Space</span> plays the scene, Esc ends it early, Ctrl+Alt+Q quits.</p>
+</div>
+<script src="../node_modules/katex/dist/katex.min.js"></script>
+<script>
+  window.setHotkey = (k) => { document.getElementById('hotkey').textContent = k; };
+  katex.render(String.raw`d[v] = \min\big(d[v],\ d[u] + w(u,v)\big)`, document.getElementById('equation'), { displayMode: false });
+  window.pieceRects = () => Object.fromEntries(['equation', 'algorithm'].map(id => {
+    const r = document.getElementById(id).getBoundingClientRect();
+    return [id, { x: Math.round(r.x), y: Math.round(r.y), w: Math.round(r.width), h: Math.round(r.height) }];
+  }));
+</script>
