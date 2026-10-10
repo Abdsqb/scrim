@@ -1,4 +1,4 @@
-# Screen explainer
+# Scrim
 
 Turns whatever is on your screen into an explainer video you can interrupt.
 

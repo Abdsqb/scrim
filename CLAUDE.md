@@ -1,8 +1,8 @@
-# Screen explainer
+# Scrim
 
 A desktop app that turns whatever is on your screen into an explainer video you can interrupt. The user presses a hotkey, asks a question about something on screen, and the screen appears to come apart: pieces lift off the page, the page falls away, and the pieces are taken apart, matched, and animated to answer the question. Follow-up questions change the scene that is already there. Esc puts the screen back.
 
-Working name only. The owner has not picked a product name.
+Named Scrim, after the theatre curtain that looks solid until it is lit from behind and the scene beyond it shows through. Here the screen is the scrim.
 
 ## Who you are working with
 
