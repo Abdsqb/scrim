@@ -37,6 +37,7 @@ npm run demo:auto  # plays the demo scene once without the hotkey, then exits (f
 npm run select:auto  # drags two boxes by itself and checks the restore (npx electron prototype/live.js --auto-select --esc-while-selecting tests Esc mid-selection)
 npm run record     # saves every frame to prototype/frames/ on a stepped clock
 npm test           # 12 checks: equation splitting, streamed script parsing, cost model
+npm run samples    # renders 10 made-up study screens to samples/ (git-ignored) with truth.json: question, right pieces, true boxes
 ```
 
 ## How it fits together

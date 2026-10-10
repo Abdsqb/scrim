@@ -51,5 +51,7 @@ prototype/
   demo-script.js   the hand-written scene
   notes.html       sample lecture notes that stand in for the user's screen
   test_core.js     checks that need no screen
+tools/
+  make-samples.js  renders made-up study screens with known piece boxes, for testing Casting
 media/             recording and still of the demo scene
 ```
