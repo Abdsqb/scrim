@@ -12,7 +12,7 @@ They assume the stage owns layout (step 2), so the model names slots and never p
 - Stream the response.
 - Put the system prompt in one fixed block and cache it. It needs to be at least 512 tokens to be cached on Haiku 5.5.
 
-## Finder: screenshot and question in, pieces out
+## Casting: screenshot and question in, pieces out
 
 **System**
 

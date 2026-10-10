@@ -13,7 +13,7 @@ The full product needs eleven outside services, and most are free at this scale.
         ▼
  Your server (Cloudflare Worker)
    holds every API key, checks who is asking, limits use per person
-        ├──> Claude Haiku 5.5     the finder and director model
+        ├──> Claude Haiku 5.5     Casting and the Director
         ├──> AssemblyAI           speech to text, streamed
         └──> ElevenLabs           premium voice, optional
 
@@ -45,7 +45,7 @@ Tauri is a lighter alternative to Electron with a much smaller download. It was 
 
 | Job | Service | Free allowance | Paid price | Needed from |
 | --- | --- | --- | --- | --- |
-| Finder and director model | Claude Haiku 5.5, Anthropic API | A small credit for new accounts | $0.10 per million tokens in, $0.50 out | Phase 1 |
+| Casting and Director model | Claude Haiku 5.5, Anthropic API | A small credit for new accounts | $0.10 per million tokens in, $0.50 out | Phase 1 |
 | Server that holds keys | Cloudflare Workers | 100,000 requests a day | $5 a month for 10 million requests | Phase 1 |
 | Code, downloads, updates | GitHub | Free | None | Phase 1 |
 | Speech to text | AssemblyAI Universal-Streaming | Up to 333 hours of streaming | $0.15 per hour | Phase 2 |

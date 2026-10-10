@@ -73,7 +73,7 @@ Dragging stays after step 4 as the fallback when the model picks the wrong piece
 
 ## Step 4. Ask a question; the model finds and reads the pieces
 
-**Do:** after the freeze, a small box takes a typed question. Send the full screenshot and the question to the vision model in one call. It streams back one line per piece: a rough box and its content (equation parts or code lines). Snap each box to the content on screen, lift it, and turn it live. Dragging a box still works and replaces the model's choice. Call the model straight from the app for now, with the key in a git-ignored file. Start from the finder prompt in `07-director-prompt-draft.md`.
+**Do:** after the freeze, a small box takes a typed question. Send the full screenshot and the question to the vision model in one call. It streams back one line per piece: a rough box and its content (equation parts or code lines). Snap each box to the content on screen, lift it, and turn it live. Dragging a box still works and replaces the model's choice. Call the model straight from the app for now, with the key in a git-ignored file. Start from the Casting prompt in `07-director-prompt-draft.md`.
 
 **First, before building on it:** take ten screenshots of real notes, ask the model for the boxes, and measure how far they are from the true pieces, before and after snapping. If snapping cannot fix them, rethink before going further.
 

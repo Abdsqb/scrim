@@ -41,7 +41,9 @@ npm test           # 12 checks: equation splitting, streamed script parsing, cos
 
 ## How it fits together
 
-Three parts. Details in `docs/02-architecture.md`.
+Named like a theatre production: Casting picks the pieces, the Director writes the scene, the Stage performs it. Details in `docs/02-architecture.md`.
+
+- **Casting**: one vision model call that takes the full screenshot and the question, picks the pieces the question is about, and reads each into LaTeX parts or code lines with a rough box. Not built yet. Dragging a box is the fallback.
 
 - **Stage** (`prototype/stage.html`): a web page shown in a full-screen window. It displays a screenshot and plays moves on it. Nothing on the real screen is touched.
 - **Moves**: a small fixed vocabulary (`lift`, `recede`, `write`, `code`, `split`, `match`, `swap`, `show`, `ask`, `say`, `restore`, `hold`, plus `wait`, which only the app plays). Each is a plain object.
