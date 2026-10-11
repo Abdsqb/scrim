@@ -65,8 +65,9 @@ Rules for figures:
 // One JSON object per line, parsed as chunks arrive. The same parser is checked in test_core.js.
 function lineParser(onLine, onBad) {
   let buf = '';
-  // Models occasionally write a number with a leading zero ("070"), which JSON forbids; that one slip is forgiven.
-  const parse = (line) => { try { return JSON.parse(line); } catch { return JSON.parse(line.replace(/([[,:]\s*)0+(\d)/g, '$1$2')); } };
+  // Models occasionally write a number with a leading zero ("070") or leave a comma before a closing bracket, which JSON forbids;
+  // those two slips are forgiven.
+  const parse = (line) => { try { return JSON.parse(line); } catch { return JSON.parse(line.replace(/([[,:]\s*)0+(\d)/g, '$1$2').replace(/,\s*([}\]])/g, '$1')); } };
   const take = (line) => { line = line.trim(); if (!line) return; let v; try { v = parse(line); } catch { return onBad(line); } onLine(v); };
   return {
     push(chunk) { buf += chunk; let i; while ((i = buf.indexOf('\n')) >= 0) { const line = buf.slice(0, i); buf = buf.slice(i + 1); take(line); } },
@@ -100,7 +101,8 @@ function equationParts(p, prefix = '') {
     parts.push({ tex: s });
   };
   let from = 0;
-  for (const t of cuts) { plain(tex.slice(from, t.at)); parts.push({ id: prefix + t.id, tex: t.tex }); from = t.end; }
+  const pad = (t) => (OP_START.test(t) ? '{}' : '') + t + (OP_END.test(t) ? '{}' : '');   // a term like "- 40" keeps its binary spacing too
+  for (const t of cuts) { plain(tex.slice(from, t.at)); parts.push({ id: prefix + t.id, tex: pad(t.tex) }); from = t.end; }
   plain(tex.slice(from));
   for (const t of inner) {                         // tag nested terms inside whichever part holds them
     const q = parts.find((pp) => pp.tex.includes(t.tex)); if (!q) continue;

@@ -14,7 +14,7 @@ Each step ends with something you can see working. Do them in order. The AI mode
 | Dragging a box to select a piece | Works. Not yet tried on a real PDF |
 | Layout by slots | Not built |
 | Finding and reading pieces with a model | Works: Casting, 10/10 picks and 18/18 readings on the generated screens. Not yet tried on real notes |
-| Director model | Not built. Draft prompt exists |
+| Director model | First version works: diagrams, arrows, notes, highlights. Judged by eye on five screens |
 | Stage memory and follow-ups | Not built |
 | Voice in and out | Not built |
 | Server, accounts, installer | Not built |

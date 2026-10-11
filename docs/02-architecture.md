@@ -127,9 +127,13 @@ A full 1920 by 1200 screenshot costs about 2,967 image tokens, about $0.0003 on 
 
 The stage already measures where the dark pixels of a crop are (`inkBox`), so a lifted photo can be scaled to land exactly on the live text. For that to look right, Casting's LaTeX must reproduce the original closely.
 
-## The director (to build)
+## The director
 
-A model call that receives the question, the content of the pieces, and what is on the stage, and returns a script.
+Built in `prototype/director.js`. A model call that receives the question and the pieces on stage, written as plain lines with the exact ids it may use, and returns a script.
+
+The prompt's central rule: the student has already read the material and did not get it, so repeating or enlarging it teaches nothing. The Director gives a new angle (a diagram of the idea, the process behind it, the student's own numbers worked through, a comparison) and ties it back to the material with arrows and highlights. The first version only showed the lifted text bigger, which the owner rightly called redundant.
+
+Its moves: `focus` (light up a term, cell, line, part or figure), `say` (caption), `diagram` with `type` `flow` (boxes top to bottom joined by arrows), `stack` (amounts drawn to scale, listed top to bottom) or `compare` (columns), `arrow` (from anything to anything, with a label), `note` (handwritten label), `write` (a line of math on the canvas) and `hold`. The stage lays out and draws everything: Casting's pieces in a column on the left, the Director's canvas on the right, filling top to bottom and then a second column. Arrows from the material leave from the edge of the block they sit in and pass behind diagram boxes; arrows between two things in the student's column arc through the gutter; labels avoid content and other arrows.
 
 - **Output format:** one JSON object per line. The stage plays each line as it arrives, so motion starts before the model finishes. A line parser for this is in `prototype/test_core.js` and passes at every possible break point in the stream.
 - **Short output.** A script of moves is several times shorter than drawing code for the same scene, and model response time grows with output length. The exact ratio has not been measured against real model output.

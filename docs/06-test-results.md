@@ -33,7 +33,24 @@ Run on 2026-10-10 on the same PC, at 100% scaling, against the sample notes page
 
 Not tested: a real PDF with a real mouse, which is what "done" means for step 1.
 
-## Casting on any content
+## The Director (first version)
+
+Run on 2026-10-10 with `npx electron prototype/live.js --auto-ask="..." --screen=samples/NN-....png`, which saves a still every 4 s to `samples/stills/`. Judged by looking at the stills; there is no automatic score for explanations yet.
+
+| Screen and question | What the Director built |
+| --- | --- |
+| Balance-sheet slide: "I don't understand stockholders' equity" | Highlighted the term in the bullet and the table; a stack bar of total assets split into liabilities ($300,000) and equity ($200,000); arrows from each table row to its block; the note "cushion for creditors"; a closing caption on what happens if assets fall |
+| Dijkstra: "how does the relaxation equation fit into the algorithm?" | Highlighted min and the if on line 3; a flow of the update (check neighbour, compute alt, compare, overwrite); arrows from code lines to the steps |
+| Supply and demand: "why does the price end up where the two lines cross?" | Two flows: price above P* leads to a surplus and a falling price, price below leads to a shortage and a rising price; arrow from the chart: "E is where it stops" |
+| Income statement: "how is net income calculated?" | A flow down the statement with its own numbers, the whole subtraction written as one line of math, and a note on brackets |
+| Mitosis: "what happens during anaphase?" | A flow of the stage (joined, pulled apart, at opposite poles) with a note |
+
+Speed: the first Director move arrives 0.7 to 0.9 s after Casting finishes; a whole script (8 to 16 moves) takes 2 to 3 s to write, once 5.9 s. The stage is still playing Casting's lifts when the first move arrives.
+
+Problems found in the stills and fixed: arrows crossing the numbers in a table, the rest of a sentence, and earlier boxes in a horizontal flow (flows now run top to bottom, arrows leave from block edges and pass behind boxes); labels on top of each other and of text; bar labels overflowing; one failing move ending the whole scene (now skipped); trailing commas in the model's JSON.
+
+Still rough: labels sometimes sit on an underline or another line; long scenes with two diagrams can crowd the canvas.
+
 
 Run on 2026-10-10. The sample screens grew to fifteen: screens 11 to 15 add text, tables and figures (a balance-sheet slide asking about stockholders' equity, a photosynthesis diagram, a supply-and-demand chart, four similar paragraphs on mitosis, an income statement). Some pieces are marked optional: helpful context that may be picked or not.
 

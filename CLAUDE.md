@@ -15,13 +15,13 @@ There is a working prototype in `prototype/`. It is a hand-written demo, not the
 Works today:
 - Capture the screen, freeze it in a full-screen always-on-top window, restore it.
 - Ask a typed question on any screen, about anything: Casting (`prototype/casting.js`, Claude Haiku 5.5) finds the pieces on the full screenshot (equations, code, text passages, tables, figures), they lift as they stream in, the page recedes, and each turns into live content: math, code lines, text with addressable key terms, a table grid, or a picture. Needs `ANTHROPIC_API_KEY` in the git-ignored `.env`.
+- The Director (`prototype/director.js`, Claude Haiku 5.5) then explains with a new angle instead of repeating the material: it highlights terms, builds diagrams (flow, stack, compare), draws arrows from the material to them, adds notes and lines of math, and captions. Casting's pieces sit in a column on the left; the Director builds on the right.
 - Dragging a box around a piece is the fallback. Each lifts on release; Enter recedes the page; Esc restores.
 - A stage that plays a script of moves in an explainer-video style (see `docs/03-motion-style.md`).
 - A 33-second demo scene with a follow-up question, played live or recorded frame by frame.
 - Global hotkey, Esc to end a scene early.
 
 Not built yet:
-- The Director: nothing explains the pieces yet. After Casting the scene holds with a caption. The full demo scene in `prototype/demo-script.js` is still hand-written.
 - Layout. Every position in the demo script is a hand-picked pixel coordinate.
 - Voice in, voice out, stage memory for follow-ups, accounts, server, installer.
 
@@ -49,8 +49,8 @@ Named like a theatre production: Casting picks the pieces, the Director writes t
 - **Casting** (`prototype/casting.js`): one vision model call that takes the full screenshot and the question, picks the pieces the question is about, and reads each with a rough box: an equation as one LaTeX string plus terms (code cuts it into parts), code lines, text lines plus key terms, table rows, or a figure (not read). Dragging a box is the fallback.
 
 - **Stage** (`prototype/stage.html`): a web page shown in a full-screen window. It displays a screenshot and plays moves on it. Nothing on the real screen is touched.
-- **Moves**: a small fixed vocabulary (`lift`, `recede`, `write`, `code`, `text`, `table`, `place`, `split`, `match`, `swap`, `show`, `indicate`, `ask`, `say`, `restore`, `hold`, plus `wait`, which only the app plays). Each is a plain object.
-- **Director**: an AI model that will turn a question plus the pieces on stage into a list of moves, streamed one JSON object per line. Not built yet. Draft prompt in `docs/07-director-prompt-draft.md`.
+- **Moves**: a small fixed vocabulary. Casting's pieces: `lift`, `recede`, `write`, `code`, `text`, `table`, `place`. The Director's: `focus`, `say`, `diagram` (flow, stack, compare), `arrow`, `note`, `write`, `hold`. Older ones the demo uses: `split`, `match`, `swap`, `show`, `indicate`, `ask`. The app plays `wait` and `restore`. Each is a plain object; a move that cannot play is skipped and reported, not fatal.
+- **Director** (`prototype/director.js`): a model call that turns the question plus the pieces on stage into moves, streamed one JSON object per line. Its job is a new angle (a picture, a process, the student's numbers worked through), never a rephrasing. Every move is checked against the ids on stage before it plays.
 
 ## Rules that must hold
 

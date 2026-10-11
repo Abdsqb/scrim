@@ -35,7 +35,7 @@ npm run record       # save every frame of the demo scene to prototype/frames/
 
 ## What is real and what is not
 
-The motion, the selection and Casting (finding and reading the pieces) are real. The explanation is not there yet: once the pieces are live nothing explains them, and the full scene in `npm run demo` is a hand-written script in `prototype/demo-script.js`.
+The motion, the selection, Casting (finding and reading the pieces) and a first Director (the explanation: diagrams, arrows, notes, captions) are real. Follow-up questions and voice are not built yet.
 
 It runs on Windows at 100% scaling. Higher scaling and a second monitor are not checked yet.
 
@@ -47,6 +47,7 @@ docs/              product, architecture, motion style, services, build plan, te
 prototype/
   live.js          Electron main process: hotkey, capture, question, Casting, selection, overlay, play
   casting.js       Casting: the prompt, streaming the reply, checking it, snapping boxes
+  director.js      the Director: the prompt, what is on stage, checking every move
   record.js        same scene on a stepped clock, saved frame by frame
   stage.html       the stage: clock, tweens and every move
   demo-script.js   the hand-written scene

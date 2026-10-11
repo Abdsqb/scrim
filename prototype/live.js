@@ -14,6 +14,7 @@ const { app, BrowserWindow, desktopCapturer, globalShortcut, screen } = require(
 const path = require('path');
 const demoScript = require('./demo-script');
 const casting = require('./casting');
+const director = require('./director');
 const has = (flag) => process.argv.includes(flag);
 const AUTO = has('--auto'), ABORT = has('--abort'), AUTO_SELECT = has('--auto-select'), DEMO = has('--demo') || AUTO;
 const ESC_EARLY = has('--esc-while-selecting');   // with --auto-select: press Esc before Enter, with two pieces already lifted
@@ -47,6 +48,7 @@ app.whenReady().then(async () => {
       await notes.loadFile(page); await sleep(300);
     }
     else await notes.loadFile(path.join(__dirname, 'notes.html'));
+    notes.setAlwaysOnTop(true, 'floating'); notes.moveTop();   // the stand-in screen stays in front of other windows; the stage sits above it
   }
 
   // The stage is created hidden at start-up so that showing it later is instant.
@@ -99,36 +101,52 @@ app.whenReady().then(async () => {
       feed({ move: 'say', text: "I couldn't find that on your screen. Press Esc, then drag a box around it." });
       return placed;
     }
-    // Simple placement until the stage owns layout (build step 2): one centred column, in the order Casting ranked the pieces.
-    // Heights are estimates, since nothing is measured until it is on stage. Only one code block can be live, so others stay pictures.
+    // Simple placement until the stage owns layout (build step 2): Casting's pieces in a column on the left, in the order Casting
+    // ranked them, and the Director's canvas on the right. Heights are estimates, since nothing is measured until it is on stage.
+    // Only one code block can be live, so others stay pictures.
     feed({ move: 'recede', pause: 120 });
-    const cx = Math.round(W / 2), colW = Math.min(1000, W - 160), left = Math.round((W - colW) / 2);
+    const left = 56, colW = Math.round(W * 0.36), mid = left + colW / 2;
     let y = 130, codeLive = false;
     for (const p of placed) {
       if (p.kind === 'equation') {
         const parts = casting.equationParts(p, p.piece + '-');   // ids must be unique on the stage, so each is prefixed with its piece
-        feed({ move: 'write', piece: p.piece, row: p.piece, at: { x: cx, y: y + 30 }, size: 40, parts, pause: 60 });
-        y += 100;
+        feed({ move: 'write', piece: p.piece, row: p.piece, at: { x: mid, y: y + 26 }, size: 34, parts, pause: 60 });
+        y += 90;
       } else if (p.kind === 'code' && !codeLive) {
-        codeLive = true;
-        feed({ move: 'code', piece: p.piece, at: { x: left, y }, size: 22, lines: p.lines });
-        y += p.lines.length * 22 * 1.75 + 40;
+        codeLive = p.live = true;
+        feed({ move: 'code', piece: p.piece, at: { x: left, y }, size: 18, lines: p.lines });
+        y += p.lines.length * 18 * 1.75 + 36;
       } else if (p.kind === 'text') {
-        const size = 26, perLine = Math.floor(colW / (size * 0.5));
+        const size = 21, perLine = Math.floor(colW / (size * 0.5));
         feed({ move: 'text', piece: p.piece, at: { x: left, y }, width: colW, size, lines: p.lines, terms: p.terms });
-        y += p.lines.reduce((n, l) => n + Math.max(1, Math.ceil(l.length / perLine)), 0) * size * 1.45 + p.lines.length * size * 0.45 + 40;
+        y += p.lines.reduce((n, l) => n + Math.max(1, Math.ceil(l.length / perLine)), 0) * size * 1.45 + p.lines.length * size * 0.45 + 36;
       } else if (p.kind === 'table') {
-        feed({ move: 'table', piece: p.piece, at: { x: left, y }, size: 22, rows: p.rows });
-        y += p.rows.length * 22 * 1.95 + 40;
+        feed({ move: 'table', piece: p.piece, at: { x: left, y }, size: 18, rows: p.rows });
+        y += p.rows.length * 18 * 1.95 + 36;
       } else {                                        // a figure, or a second code block: it stays a picture
-        const w = Math.round(Math.min(colW, p.rect.w * 1.25, p.rect.w * 380 / p.rect.h));
-        feed({ move: 'place', piece: p.piece, at: { x: cx - w / 2, y }, w });
-        y += p.rect.h * w / p.rect.w + 40;
+        const w = Math.round(Math.min(colW, p.rect.w * 1.1, p.rect.w * 320 / p.rect.h));
+        feed({ move: 'place', piece: p.piece, at: { x: mid - w / 2, y }, w });
+        y += p.rect.h * w / p.rect.w + 36;
       }
     }
-    const name = { equation: 'the equation', code: 'the code', text: 'the passage', table: 'the table', figure: 'the figure' };
-    const names = [...new Set(placed.map((p) => name[p.kind]))];
-    feed({ move: 'say', text: `Found ${names.join(' and ')}. The explanation comes next, with the Director. Esc to go back.` });
+    const canvasX = left + colW + 80;
+    js(`setCanvas(${JSON.stringify({ x: canvasX, y: 140, w: W - canvasX - 60 })})`);
+
+    // The Director writes the explanation; each checked move plays as soon as it arrives.
+    const t1 = performance.now(); let moves = 0;
+    try {
+      const dUsage = await director.direct(client, {
+        question, placed,
+        onMove: (m) => {
+          if (!moves++) log(`Director: first move ${((performance.now() - t1) / 1000).toFixed(2)} s after Casting finished`);
+          if (process.env.SCRIM_DEBUG) log('move', JSON.stringify(m).slice(0, 300));
+          feed(m.move === 'write' ? { move: 'write', row: m.row, size: 36, parts: m.parts } : m);
+        },
+        onReject: (why, m) => log('Director move refused:', why, JSON.stringify(m || '').slice(0, 200)),
+      });
+      log(`Director done in ${((performance.now() - t1) / 1000).toFixed(2)} s: ${moves} moves | tokens ${dUsage.input_tokens} in, ${dUsage.output_tokens} out`);
+    } catch (e) { log('Director failed:', e.message); }
+    if (!moves) feed({ move: 'say', text: "I found the pieces, but couldn't build an explanation this time. Esc to go back." });
     return placed;
   }
 
@@ -161,9 +179,10 @@ app.whenReady().then(async () => {
           log(`asked: "${question}"`);
           js('openFeed()');
           const running = js(`run('feed')`);
-          if (AUTO_ASK) {                               // test: save what the scene looks like once the pieces are live, then press Esc
-            setTimeout(async () => require('fs').writeFileSync(path.join(__dirname, '..', 'samples', 'live-ask.png'), (await overlay.webContents.capturePage()).toPNG()), 8000);
-            setTimeout(() => js('cancel()'), 12000);
+          if (AUTO_ASK) {                               // test: save stills of the scene every 4 s, then press Esc
+            const shots = path.join(__dirname, '..', 'samples', 'stills'); require('fs').mkdirSync(shots, { recursive: true });
+            for (let k = 1; k <= 9; k++) setTimeout(async () => require('fs').writeFileSync(path.join(shots, `t${String(k * 4).padStart(2, '0')}s.png`), (await overlay.webContents.capturePage()).toPNG()), k * 4000);
+            setTimeout(() => js('cancel()'), 38000);
           }
           placed = await castScene(shot, question);
           feed({ move: 'wait' });

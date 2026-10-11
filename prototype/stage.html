@@ -5,8 +5,8 @@
   html, body { margin: 0; height: 100%; overflow: hidden; background: #000; }
   #shot { position: absolute; inset: 0; width: 100%; height: 100%; transform-origin: 50% 46%; will-change: transform, filter; }
   #veil { position: absolute; inset: 0; opacity: 0; background: radial-gradient(ellipse at 50% 42%, rgba(6,8,14,.34) 0%, rgba(2,3,6,.88) 80%); }
-  #layer, #ink { position: absolute; inset: 0; width: 100%; height: 100%; }
-  #ink { pointer-events: none; overflow: visible; }
+  #layer, #ink, #links { position: absolute; inset: 0; width: 100%; height: 100%; }
+  #ink, #links { pointer-events: none; overflow: visible; }
   .piece { position: absolute; transform-origin: 0 0; border-radius: 6px; background-repeat: no-repeat; opacity: 0; }
   .piece.neg { filter: invert(1) grayscale(1) contrast(2.8); mix-blend-mode: screen; }
   .row { position: absolute; display: flex; align-items: baseline; white-space: nowrap; color: #fff; }
@@ -36,9 +36,26 @@
   #hint input { width: 520px; background: transparent; border: 0; outline: 0; color: #fff; font: 16px "Segoe UI", "DejaVu Sans", sans-serif; }
   #hint input::placeholder { color: #9aa0ab; }
   #hint small { color: #9aa0ab; font-size: 13px; padding-right: 10px; }
+  .note { position: absolute; font: 21px "Segoe Print", "Segoe UI", sans-serif; white-space: nowrap; opacity: 0; text-shadow: 0 2px 10px rgba(0,0,0,.8); }
+  .flow { display: flex; flex-direction: column; align-items: stretch; }
+  .node { border: 2px solid; border-radius: 12px; padding: 14px 16px; color: #eef0f4; font: 20px/1.3 "Segoe UI", "DejaVu Sans", sans-serif; text-align: center;
+          display: flex; align-items: center; justify-content: center; background: #191c23; box-sizing: border-box; }
+  .stack { position: relative; font-family: "Segoe UI", "DejaVu Sans", sans-serif; }
+  .stack .seg { position: absolute; border-radius: 6px; color: #10131a; font: 600 17px/1.25 "Segoe UI", sans-serif; display: flex; flex-direction: column;
+                align-items: center; justify-content: center; text-align: center; overflow: hidden; box-sizing: border-box; }
+  .stack .seg small { font-weight: 500; font-size: 15px; }
+  .stack .side { position: absolute; color: #eef0f4; font: 16px/1.25 "Segoe UI", sans-serif; white-space: nowrap; }
+  .stack .bar-label { position: absolute; color: #cfd3dc; font: 18px "Segoe UI", sans-serif; text-align: center; }
+  .compare { display: flex; gap: 40px; font-family: "Segoe UI", "DejaVu Sans", sans-serif; }
+  .compare .colm { flex: 1; border-top: 3px solid; padding-top: 10px; }
+  .compare h3 { margin: 0 0 8px; font: 600 21px "Segoe UI", sans-serif; }
+  .compare li { color: #eef0f4; font: 19px/1.35 "Segoe UI", sans-serif; margin: 6px 0; opacity: 0; }
+  .compare ul { margin: 0; padding-left: 20px; }
+  .arrow-label { position: absolute; font: 18px "Segoe Print", "Segoe UI", sans-serif; white-space: nowrap; opacity: 0; text-shadow: 0 2px 10px rgba(0,0,0,.8); }
 </style>
 <img id="shot">
 <div id="veil"></div>
+<svg id="links"></svg>
 <div id="layer"></div>
 <svg id="ink"></svg>
 <div id="ask"></div>
@@ -87,6 +104,7 @@ function box(el) {                                    // tight box around the vi
   for (const s of g) { const r = s.getBoundingClientRect(); if (!r.width) continue; x0 = Math.min(x0, r.left); y0 = Math.min(y0, r.top); x1 = Math.max(x1, r.right); y1 = Math.max(y1, r.bottom); }
   return { x: x0, y: y0, width: x1 - x0, height: y1 - y0, left: x0, top: y0, right: x1, bottom: y1, cx: (x0 + x1) / 2, cy: (y0 + y1) / 2 };
 }
+const linkSvg = (tag, attrs) => { const e = document.createElementNS('http://www.w3.org/2000/svg', tag); for (const k in attrs) e.setAttribute(k, attrs[k]); $('links').appendChild(e); return e; };   // under the pieces
 const svg = (tag, attrs) => { const e = document.createElementNS('http://www.w3.org/2000/svg', tag); for (const k in attrs) e.setAttribute(k, attrs[k]); ink.appendChild(e); return e; };
 const drawOn = (path, ms, delay = 0) => { path.setAttribute('pathLength', 1); path.style.strokeDasharray = 1; return tween(ms, (t) => { path.style.strokeDashoffset = 1 - t; }, smooth, delay); };
 // "Write": each glyph is outlined first, then filled, left to right.
@@ -155,6 +173,7 @@ const moves = {
     pos.remove(); delete stage.pieces[piece]; return neg;
   },
   async write({ piece, row, at, size = 44, anchor = 'center', dim = false, parts }) {   // an equation as separate, movable terms
+    const onCanvasRow = !at; if (onCanvasRow) { at = { x: canvas.x, y: canvas.y + size * 0.8 }; anchor = 'left'; }   // the Director's rows stack on its canvas
     const r = document.createElement('div'); r.className = 'row'; r.id = 'row-' + row; r.style.fontSize = size + 'px'; if (dim) r.style.color = PAL.grey;
     const made = parts.map((p, i) => { const s = document.createElement('span'); s.className = 'part'; if (p.id) s.id = p.id;
       katex.render(p.tex, s, KOPT); r.appendChild(s); const rec = { ...p, el: s, row, size }; if (p.id) stage.parts[p.id] = rec; return rec; });
@@ -163,6 +182,7 @@ const moves = {
     for (const p of made) for (const t of p.inner || []) { const el = document.getElementById(t.id); if (el) stage.parts[t.id] = { id: t.id, tex: t.tex, el, row, size, inner: true }; }
     r.style.left = at.x + 'px'; r.style.top = at.y + 'px'; r.style.transform = anchor === 'center' ? 'translate(-50%, -50%)' : 'translate(0, -50%)';
     made.forEach(p => { if (p.hidden) p.el.style.visibility = 'hidden'; });
+    if (onCanvasRow) canvas.y += r.getBoundingClientRect().height + 34;
     if (piece && stage.pieces[piece]) {
       r.style.opacity = 0; const neg = await moves._dissolve(piece, box(r));
       await tween(420, (t) => { r.style.opacity = t; neg.style.opacity = 1 - t; }); neg.remove(); return;
@@ -185,7 +205,7 @@ const moves = {
     const c = document.createElement('div'); c.className = 'code'; c.style.fontSize = size + 'px'; c.style.left = at.x + 'px'; c.style.top = at.y + 'px';
     const els = lines.map((t, i) => { const l = document.createElement('span'); l.className = 'ln'; l.id = 'ln-' + (i + 1); l.style.opacity = 0;
       const n = document.createElement('span'); n.className = 'no'; n.textContent = i + 1; const b = document.createElement('span'); b.className = 'tx'; b.textContent = t; l.append(n, b); c.appendChild(l); return l; });
-    layer.appendChild(c); stage.code = c; const nos = els.map(l => l.querySelector('.no')), txs = els.map(l => l.querySelector('.tx'));
+    if (piece) c.id = piece; layer.appendChild(c); stage.code = c; const nos = els.map(l => l.querySelector('.no')), txs = els.map(l => l.querySelector('.tx'));
     if (piece && stage.pieces[piece]) {
       let x0 = 1e9, y0 = 1e9, x1 = -1e9, y1 = -1e9; for (const t of txs) { const q = document.createRange(); q.selectNodeContents(t); const b = q.getBoundingClientRect(); x0 = Math.min(x0, b.left + leadPx(t, size)); y0 = Math.min(y0, b.top); x1 = Math.max(x1, b.right); y1 = Math.max(y1, b.bottom); }
       nos.forEach(n => { n.style.opacity = 0; }); els.forEach(l => { l.style.opacity = 1; }); c.style.opacity = 0;
@@ -208,20 +228,20 @@ const moves = {
     Object.assign(c.style, { left: at.x + 'px', top: at.y + 'px', width: width + 'px', fontSize: size + 'px' });
     for (const line of lines) { const p = document.createElement('p'); p.textContent = line; c.appendChild(p); }
     for (const t of terms) for (const p of c.children) { const s = wrapText(p, t.text); if (s) { s.id = `${piece}-${t.id}`; s.classList.add('term'); break; } }
-    layer.appendChild(c); stage.texts[piece] = c;
+    c.id = piece; layer.appendChild(c); stage.texts[piece] = c;
     await moves._land(piece, c);
   },
   async table({ piece, at, size = 22, rows }) {       // a table as a live grid; cell ids are piece-r<row>c<column>, counting from 1
     const t = document.createElement('table'); t.className = 'grid'; Object.assign(t.style, { left: at.x + 'px', top: at.y + 'px', fontSize: size + 'px' });
     rows.forEach((r, i) => { const tr = t.insertRow(); r.forEach((cell, j) => { const td = tr.insertCell(); td.textContent = cell; td.id = `${piece}-r${i + 1}c${j + 1}`;
       if (i > 0 && /^[\s$€£(+-]*[\d.,]+%?\)?$/.test(cell)) td.classList.add('num'); }); });
-    layer.appendChild(t); stage.tables[piece] = t;
+    t.id = piece; layer.appendChild(t); stage.tables[piece] = t;
     await moves._land(piece, t);
   },
   async place({ piece, at, w }) {                     // a picture moves to a new spot and size, staying a picture
     const p = stage.pieces[piece]; if (!p) throw new Error('place: no lifted piece ' + piece);
     const { els: [pos, neg], rect, base } = p, s = w / rect.w;
-    neg.remove(); delete stage.pieces[piece]; stage.figures[piece] = pos;
+    neg.remove(); delete stage.pieces[piece]; stage.figures[piece] = pos; pos.id = piece;
     await fly([pos], base, { cx: at.x + w / 2, cy: at.y + rect.h * s / 2 }, 1000, { s0: 1.06, scaleTo: s, startCy: base.cy - 8, arc: 0.1 });
   },
   async split({ row }) {                              // the terms drift apart so each can be picked up on its own
@@ -282,21 +302,166 @@ const moves = {
         r.el.setAttribute('x1', b.cx + c * r0); r.el.setAttribute('y1', b.cy + s2 * r0); r.el.setAttribute('x2', b.cx + c * Math.max(r0, r1)); r.el.setAttribute('y2', b.cy + s2 * Math.max(r0, r1)); r.el.style.opacity = 1 - t * t; } }, rushFrom),
     ]);
     rays.forEach(r => r.el.remove()); },
+  // ----- what the Director builds: highlights, notes, arrows and diagrams, all on the shared clock -----
+  async focus({ id, color = 'yellow' }) {             // light up something already on stage: a term, a cell, a line, a part, a figure
+    const el = resolve(id), c = col(color); if (!el) throw new Error('focus: nothing on stage is called ' + id);
+    if (el.tagName === 'IMG' || el.classList.contains('piece')) {   // a figure gets an outline drawn round it
+      const b = el.getBoundingClientRect(), o = svg('rect', { x: b.left - 8, y: b.top - 8, width: b.width + 16, height: b.height + 16, rx: 10, fill: 'none', stroke: c, 'stroke-width': 3 });
+      await drawOn(o, 700); return;
+    }
+    if (el.matches('.node, .seg, .colm, .stack > div:not(.bar-label):not(.side)')) {   // a box in a diagram glows instead of getting underlined
+      await tween(520, (t) => { el.style.boxShadow = `0 0 0 ${(3 * t).toFixed(1)}px ${c}, 0 0 ${(22 * t).toFixed(1)}px rgba(${rgb(c).join(',')},.55)`; }); return;
+    }
+    const from = rgbToHex(getComputedStyle(el).color), cell = el.tagName === 'TD';
+    const lines = [...el.getClientRects()].filter((q) => q.width > 2).map((q) => svg('path', { d: `M${q.left} ${q.bottom + 3} Q ${q.left + q.width / 2} ${q.bottom + 8}, ${q.right} ${q.bottom + 2}`, fill: 'none', stroke: c, 'stroke-width': 3, 'stroke-linecap': 'round' }));
+    await Promise.all([
+      tween(520, (t) => { el.style.color = mixc(from, c, t); if (cell) el.style.background = `rgba(${rgb(c).join(',')},${(.2 * t).toFixed(3)})`; }),
+      ...lines.map((q, i) => drawOn(q, 480, 120 + i * 120)),
+    ]);
+  },
+  async note({ near, text, color = 'yellow' }) {      // a short handwritten label beside something, with a stroke pointing at it
+    const el = resolve(near), c = col(color); if (!el) throw new Error('note: nothing on stage is called ' + near);
+    const r = el.getBoundingClientRect(), n = document.createElement('div'); n.className = 'note'; n.textContent = text; n.style.color = c; layer.appendChild(n);
+    const nb = n.getBoundingClientRect(); let x = r.right + 30, y = r.top + r.height / 2 - nb.height / 2, d;
+    if (x + nb.width < innerWidth - 24) d = `M${x - 6} ${y + nb.height / 2} L${r.right + 6} ${r.top + r.height / 2}`;
+    else { x = Math.max(24, Math.min(innerWidth - nb.width - 24, r.left + r.width / 2 - nb.width / 2)); y = r.bottom + 26; d = `M${x + nb.width / 2} ${y - 2} L${r.left + r.width / 2} ${r.bottom + 4}`; }
+    n.style.left = x + 'px'; n.style.top = y + 'px';
+    const stroke = svg('path', { d, fill: 'none', stroke: c, 'stroke-width': 2, 'stroke-linecap': 'round' });
+    await Promise.all([drawOn(stroke, 360), tween(380, (t) => { n.style.opacity = t; n.style.transform = `translateY(${lerp(6, 0, t)}px)`; }, smooth, 160)]);
+  },
+  async arrow({ from, to, label, color = 'yellow' }) { // a curved arrow from one thing to another, drawn on, with an optional label
+    const a = resolve(from), b = resolve(to), c = col(color); if (!a || !b) throw new Error(`arrow: nothing on stage is called ${a ? to : from}`);
+    // A table cell's arrow leaves from the end of its row, so it never crosses the numbers beside it.
+    // A word, line, part or cell leaves from the far edge of the block it sits in, at its own height, so the arrow never crosses the
+    // rest of its sentence or row.
+    const own = a.getBoundingClientRect(), block = a.closest('.text, .code, .row, table.grid');
+    const rb = b.getBoundingClientRect(), blockRight = block ? block.getBoundingClientRect().right : own.right;
+    const ra = block && block !== a && rb.left > blockRight + 40 ? { left: own.left, top: own.top, bottom: own.bottom, height: own.height, width: blockRight - own.left, right: blockRight } : own;
+    const sameColumn = !(rb.left > ra.right + 40) && Math.abs((rb.left + rb.right) / 2 - (own.left + own.right) / 2) < 500 && (a.closest('.text, .code, .row, table.grid') || b.closest('.text, .code, .row, table.grid'));
+    let s, e, c1, c2;
+    if (sameColumn) {                                  // two things in the student's column: arc out into the gutter on the right and back
+      const gx = Math.max(own.right, rb.right, a.closest('.text, .code, .row, table.grid')?.getBoundingClientRect().right || 0, b.closest('.text, .code, .row, table.grid')?.getBoundingClientRect().right || 0) + 50;
+      s = { x: own.right + 8, y: own.top + own.height / 2 }; e = { x: rb.right + 8, y: rb.top + rb.height / 2 };
+      c1 = { x: gx, y: s.y }; c2 = { x: gx, y: e.y };
+    } else if (rb.left > ra.right + 40) {                     // the usual case, material on the left to the canvas: a smooth S from side to side
+      s = { x: ra.right + 10, y: ra.top + ra.height / 2 }; e = { x: rb.left - 10, y: rb.top + rb.height / 2 };
+      const dx = (e.x - s.x) * .5; c1 = { x: s.x + dx, y: s.y }; c2 = { x: e.x - dx, y: e.y };
+    } else {                                           // otherwise from edge to edge along the line between centres, gently bowed
+      const pa = { x: ra.left + ra.width / 2, y: ra.top + ra.height / 2 }, pb = { x: rb.left + rb.width / 2, y: rb.top + rb.height / 2 };
+      const edge = (q, p, o) => { const dx = o.x - p.x, dy = o.y - p.y, t = Math.min(dx ? (q.width / 2 + 8) / Math.abs(dx) : 1e9, dy ? (q.height / 2 + 8) / Math.abs(dy) : 1e9); return { x: p.x + dx * t, y: p.y + dy * t }; };
+      s = edge(ra, pa, pb); e = edge(rb, pb, pa);
+      const bx = -(e.y - s.y) * .18, by = (e.x - s.x) * .18;
+      c1 = { x: s.x + (e.x - s.x) / 3 + bx, y: s.y + (e.y - s.y) / 3 + by }; c2 = { x: s.x + 2 * (e.x - s.x) / 3 + bx, y: s.y + 2 * (e.y - s.y) / 3 + by };
+    }
+    const path = linkSvg('path', { d: `M${s.x} ${s.y} C ${c1.x} ${c1.y}, ${c2.x} ${c2.y}, ${e.x} ${e.y}`, fill: 'none', stroke: c, 'stroke-width': 2.6, 'stroke-linecap': 'round' });
+    await drawOn(path, 700);
+    path.setAttribute('marker-end', `url(#${arrowhead(c)})`);   // the head appears once the line arrives
+    if (!label) return;
+    // The label sits on the curve, at the first spot that does not cover another label.
+    const l = document.createElement('div'); l.className = 'arrow-label'; l.textContent = label; l.style.color = c; layer.appendChild(l);
+    const lb = l.getBoundingClientRect(), at = (t) => { const u = 1 - t; return { x: u * u * u * s.x + 3 * u * u * t * c1.x + 3 * u * t * t * c2.x + t * t * t * e.x, y: u * u * u * s.y + 3 * u * u * t * c1.y + 3 * u * t * t * c2.y + t * t * t * e.y }; };
+    const taken = [...layer.querySelectorAll('.arrow-label, .note, .text p, .code .ln, table.grid tr, .row, .node, .seg, .bar-label, .side, .compare li, .compare h3, .piece')]
+      .filter((n) => n !== l && getComputedStyle(n).opacity !== '0').flatMap((n) => [...n.getClientRects()]);
+    for (const other of $('links').querySelectorAll('path')) {   // and the other arrows' lines, sampled as small squares
+      if (other === path) continue; const L = other.getTotalLength();
+      for (let d = 0; d <= L; d += 14) { const q = other.getPointAtLength(d); taken.push({ left: q.x - 3, right: q.x + 3, top: q.y - 3, bottom: q.y + 3 }); }
+    }
+    const hits = (x, y) => taken.some((q) => x < q.right + 6 && x + lb.width > q.left - 6 && y < q.bottom + 4 && y + lb.height > q.top - 4);
+    let best = null;
+    for (const t of [.5, .38, .62, .28, .72, .2, .8]) for (const up of [true, false]) {
+      const p = at(t), x = p.x - lb.width / 2, y = up ? p.y - lb.height - 6 : p.y + 6;
+      if (!hits(x, y)) { best = { x, y }; break; }
+    }
+    if (!best) { const p = at(.5); best = { x: p.x - lb.width / 2, y: p.y - lb.height - 6 }; }
+    l.style.left = best.x + 'px'; l.style.top = best.y + 'px';
+    await tween(320, (t) => { l.style.opacity = t; });
+  },
+  async diagram(m) { const f = diagrams[m.type]; if (!f) throw new Error('unknown diagram ' + m.type); await f(m); },
   async say({ text }) { const c = $('caption');
     if (c.textContent) await tween(200, (t) => { c.style.opacity = 1 - t; c.style.transform = `translateY(${-8 * t}px)`; });
     c.textContent = text; await tween(380, (t) => { c.style.opacity = t; c.style.transform = `translateY(${lerp(10, 0, t)}px)`; }); },
   async hold({ ms }) { await hold(ms); },
   async wait() { await new Promise((r) => { stage.release = r; }); stage.release = null; },   // played by the app, not the director: hold until the user presses Esc
   async restore() {                                   // everything lets go and the page comes back into focus
-    const things = [...layer.children, ...ink.children, $('caption'), $('ask')];
+    const things = [...layer.children, ...ink.children, ...$('links').children, $('caption'), $('ask')];
     await lagged(things, 380, 18, (e, t) => { e.style.opacity = (e._o0 ?? (e._o0 = parseFloat(getComputedStyle(e).opacity))) * (1 - t); });
     if (stage.receded) await Promise.all([
       tween(800, (t) => { $('shot').style.transform = `scale(${lerp(.95, 1, t)})`; $('shot').style.filter = `blur(${lerp(9, 0, t)}px) brightness(${lerp(.32, 1, t)}) saturate(${lerp(.5, 1, t)})`; }),
       tween(800, (t) => { $('veil').style.opacity = 1 - t; }),
     ]);
     stage.receded = false; $('veil').style.opacity = 0;
-    layer.innerHTML = ''; ink.innerHTML = ''; $('caption').textContent = ''; $('caption').style.opacity = 0; $('ask').style.opacity = 0;
-    $('shot').style.transform = ''; $('shot').style.filter = ''; stage.pieces = {}; stage.rows = {}; stage.parts = {}; stage.code = null; stage.texts = {}; stage.tables = {}; stage.figures = {};
+    layer.innerHTML = ''; ink.innerHTML = ''; $('links').innerHTML = ''; $('caption').textContent = ''; $('caption').style.opacity = 0; $('ask').style.opacity = 0;
+    $('shot').style.transform = ''; $('shot').style.filter = ''; stage.pieces = {}; stage.rows = {}; stage.parts = {}; stage.code = null; stage.texts = {}; stage.tables = {}; stage.figures = {}; canvas.y = canvas.top; canvas.x = canvas.left; canvas.colW = 0;
+  },
+};
+// The Director's canvas: Casting's pieces sit in a column on the left, and what the Director builds stacks down the right.
+const canvas = { x: 0, y: 0, w: 0, top: 0, left: 0, bottom: 0, colW: 0 };
+window.setCanvas = (c) => { Object.assign(canvas, c, { top: c.y, left: c.x, bottom: innerHeight - 170, colW: 0 }); };
+function onCanvas(el, after = 40) {                  // place el at the canvas cursor; a column that is full moves on to the next
+  el.style.position = 'absolute'; el.style.left = canvas.x + 'px'; el.style.top = canvas.y + 'px'; layer.appendChild(el);
+  let b = el.getBoundingClientRect();
+  if (canvas.y > canvas.top && canvas.y + b.height > canvas.bottom && canvas.x + canvas.colW + 60 + b.width < innerWidth - 30) {
+    canvas.x += canvas.colW + 60; canvas.y = canvas.top; canvas.colW = 0; el.style.left = canvas.x + 'px'; el.style.top = canvas.y + 'px'; b = el.getBoundingClientRect();
+  }
+  canvas.y += b.height + after; canvas.colW = Math.max(canvas.colW, b.width);
+  return el;
+}
+const col = (c, fallback = 'yellow') => PAL[c] || PAL[fallback];
+function resolve(id) { return document.getElementById(id) || document.getElementById('row-' + id) || stage.figures[id] || null; }
+function arrowhead(c) {                               // one arrowhead marker per colour, made when first needed
+  const id = 'ah-' + c.slice(1); if (document.getElementById(id)) return id;
+  const lk = $('links'); let defs = lk.querySelector('defs'); if (!defs) { defs = document.createElementNS('http://www.w3.org/2000/svg', 'defs'); lk.prepend(defs); }
+  const m = document.createElementNS('http://www.w3.org/2000/svg', 'marker');
+  for (const [k, v] of Object.entries({ id, viewBox: '0 0 10 10', refX: 8, refY: 5, markerWidth: 7, markerHeight: 7, orient: 'auto-start-reverse' })) m.setAttribute(k, v);
+  const tip = document.createElementNS('http://www.w3.org/2000/svg', 'path'); tip.setAttribute('d', 'M0 0 L10 5 L0 10 z'); tip.setAttribute('fill', c); m.appendChild(tip); defs.appendChild(m);
+  return id;
+}
+const money = (v, unit) => (unit === '$' || unit === '€' || unit === '£' ? unit : '') + Number(v).toLocaleString('en-US') + (unit && !'$€£'.includes(unit) ? ' ' + unit : '');
+const diagrams = {
+  async flow({ id, steps, color = 'blue' }) {         // steps top to bottom, joined by arrows: a process, a cause and effect
+    const wrap = document.createElement('div'); wrap.className = 'flow'; wrap.id = id;
+    const gap = 34, w = Math.min(340, canvas.w); wrap.style.gap = gap + 'px';
+    const nodes = steps.map((st) => { const d = document.createElement('div'); d.className = 'node'; d.id = st.id; d.textContent = st.label;
+      Object.assign(d.style, { width: w + 'px', borderColor: col(st.color, color), opacity: 0 }); wrap.appendChild(d); return d; });
+    onCanvas(wrap);
+    for (let i = 0; i < nodes.length; i++) {
+      if (i) { const a = nodes[i - 1].getBoundingClientRect(), b = nodes[i].getBoundingClientRect(), x = a.left + a.width / 2, c = col(steps[i].color, color);
+        const p = linkSvg('path', { d: `M${x} ${a.bottom + 5} L${x} ${b.top - 7}`, fill: 'none', stroke: c, 'stroke-width': 2.6, 'stroke-linecap': 'round' });
+        await drawOn(p, 300); p.setAttribute('marker-end', `url(#${arrowhead(c)})`); }
+      await tween(380, (t) => { nodes[i].style.opacity = t; nodes[i].style.transform = `translateX(${lerp(-10, 0, t)}px)`; });
+    }
+  },
+  async stack({ id, bars, unit = '' }) {               // stacked amounts drawn to scale: parts of a whole, two sides that balance
+    const H = 300, bw = 210, gap = 120, total = (b) => b.segments.reduce((n, sg) => n + sg.value, 0), k = H / Math.max(...bars.map(total));
+    const wrap = document.createElement('div'); wrap.className = 'stack'; wrap.id = id;
+    Object.assign(wrap.style, { width: (bars.length * bw + (bars.length - 1) * gap + 220) + 'px', height: (H + 44) + 'px' });
+    onCanvas(wrap);
+    for (let i = 0; i < bars.length; i++) {
+      const b = bars[i], x = i * (bw + gap); let y = H - total(b) * k;   // segments are listed top to bottom, like a balance sheet
+      const whole = document.createElement('div'); whole.id = b.id;   // the bar as a whole, so arrows and notes can point at it
+      Object.assign(whole.style, { position: 'absolute', left: x + 'px', top: (H - total(b) * k) + 'px', width: bw + 'px', height: (total(b) * k) + 'px' }); wrap.appendChild(whole);
+      const lab = document.createElement('div'); lab.className = 'bar-label'; lab.textContent = b.label; Object.assign(lab.style, { left: x + 'px', top: (H + 10) + 'px', width: bw + 'px', opacity: 0 });
+      wrap.appendChild(lab); tween(300, (t) => { lab.style.opacity = t; });
+      for (const sg of b.segments) {
+        const h = sg.value * k, top = y, el = document.createElement('div'); el.className = 'seg'; el.id = sg.id;
+        Object.assign(el.style, { left: x + 'px', width: bw + 'px', top: y + 'px', height: '0px', background: col(sg.color, 'blue'), padding: '0 10px' });
+        const big = h >= 46; el.innerHTML = big ? '<span></span><small></small>' : '';
+        if (big) { el.firstChild.textContent = sg.label; el.lastChild.textContent = money(sg.value, unit); }
+        wrap.appendChild(el);
+        await tween(650, (t) => { el.style.height = (h * t) + 'px'; });
+        if (!big) { const sd = document.createElement('div'); sd.className = 'side'; sd.textContent = `${sg.label} ${money(sg.value, unit)}`;
+          Object.assign(sd.style, { left: (x + bw + 12) + 'px', top: (top + h / 2 - 10) + 'px', opacity: 0 }); wrap.appendChild(sd); await tween(260, (t) => { sd.style.opacity = t; }); }
+        y = top + h;
+      }
+    }
+  },
+  async compare({ id, columns }) {                     // two or three columns side by side
+    const wrap = document.createElement('div'); wrap.className = 'compare'; wrap.id = id; wrap.style.width = canvas.w + 'px';
+    const cols = columns.map((cm, i) => { const c = col(cm.color, ['blue', 'gold', 'green'][i] || 'blue'), d = document.createElement('div'); d.className = 'colm'; d.id = cm.id;
+      d.style.borderColor = c; d.style.opacity = 0; const h = document.createElement('h3'); h.textContent = cm.title; h.style.color = c; d.appendChild(h);
+      const ul = document.createElement('ul'); for (const it of cm.items) { const li = document.createElement('li'); li.textContent = it; ul.appendChild(li); } d.appendChild(ul); wrap.appendChild(d); return d; });
+    onCanvas(wrap);
+    for (const d of cols) { await tween(300, (t) => { d.style.opacity = t; }); await lagged([...d.querySelectorAll('li')], 340, 120, (li, t) => { li.style.opacity = t; li.style.transform = `translateX(${lerp(-10, 0, t)}px)`; }); }
   },
 };
 function leadPx(tx, size) { const m = tx.textContent.match(/^ */)[0].length; const probe = document.createElement('span'); probe.textContent = '0'.repeat(10); probe.style.visibility = 'hidden'; tx.appendChild(probe); const w = probe.getBoundingClientRect().width / 10; probe.remove(); return m * w; }
@@ -327,12 +492,14 @@ async function* fromFeed() {
   }
 }
 window.run = async (script, { manual = false, gap = 260 } = {}) => {
-  stage.done = false; stage.error = null; stage.aborted = false; stage.restored = false; clock.rate = 1; clock.manual = manual; if (!manual) live();
+  stage.done = false; stage.error = null; stage.skipped = 0; stage.aborted = false; stage.restored = false; clock.rate = 1; clock.manual = manual; if (!manual) live();
   try {
     for await (const m of (script === 'feed' ? fromFeed() : script)) {
       if (stage.aborted) break;
       const f = moves[m.move]; if (!f || m.move.startsWith('_')) throw new Error('unknown move ' + m.move);
-      await f(m); if (m.move === 'restore') stage.restored = true;
+      // One move that cannot play (a missing id, say) is skipped and reported, rather than throwing away the whole explanation.
+      try { await f(m); } catch (e) { stage.error = stage.error || String(e && e.stack || e); stage.skipped = (stage.skipped || 0) + 1; continue; }
+      if (m.move === 'restore') stage.restored = true;
       if (m.move !== 'hold' && m.pause !== 0) await hold(m.pause ?? gap);
     }
   } catch (e) { stage.error = String(e && e.stack || e); }
@@ -386,5 +553,5 @@ addEventListener('mouseup', (e) => {
   const piece = 'p' + (sel.picks.length + 1); sel.picks.push({ piece, rect, lifted: moves.lift({ piece, rect }) });
   if (sel.picks.length >= sel.max) hint(`That is the most pieces for now &nbsp;·&nbsp; <b>Enter</b> to continue`, true);
 });
-window.state = () => ({ done: stage.done, error: stage.error, aborted: !!stage.aborted, now: Math.round(clock.now), active: active.size });
+window.state = () => ({ done: stage.done, error: stage.error, skipped: stage.skipped || 0, aborted: !!stage.aborted, now: Math.round(clock.now), active: active.size });
 </script>
