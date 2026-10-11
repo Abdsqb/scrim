@@ -322,9 +322,17 @@ const moves = {
   async note({ near, text, color = 'yellow' }) {      // a short handwritten label beside something, with a stroke pointing at it
     const el = resolve(near), c = col(color); if (!el) throw new Error('note: nothing on stage is called ' + near);
     const r = el.getBoundingClientRect(), n = document.createElement('div'); n.className = 'note'; n.textContent = text; n.style.color = c; layer.appendChild(n);
-    const nb = n.getBoundingClientRect(); let x = r.right + 30, y = r.top + r.height / 2 - nb.height / 2, d;
-    if (x + nb.width < innerWidth - 24) d = `M${x - 6} ${y + nb.height / 2} L${r.right + 6} ${r.top + r.height / 2}`;
-    else { x = Math.max(24, Math.min(innerWidth - nb.width - 24, r.left + r.width / 2 - nb.width / 2)); y = r.bottom + 26; d = `M${x + nb.width / 2} ${y - 2} L${r.left + r.width / 2} ${r.bottom + 4}`; }
+    const nb = n.getBoundingClientRect(), block = el.closest('.text, .code, .row, table.grid, .flow, .stack, .compare'), br = block ? block.getBoundingClientRect() : r;
+    const taken = occupied([n]), free = (x, y) => x > 16 && y > 100 && x + nb.width < innerWidth - 16 && y + nb.height < innerHeight - 150
+      && !taken.some((q) => x < q.right + 8 && x + nb.width > q.left - 8 && y < q.bottom + 6 && y + nb.height > q.top - 6);
+    const midY = r.top + r.height / 2 - nb.height / 2;
+    // Beside the block it sits in, level with it; then beside the thing itself; then below or above it.
+    const spots = [[br.right + 34, midY], [r.right + 30, midY], [r.left, br.bottom + 18], [r.left, r.top - nb.height - 14], [r.left, r.bottom + 18], [br.right + 34, midY + 40], [br.right + 34, midY - 40]];
+    const [x, y] = spots.find(([sx, sy]) => free(sx, sy)) || spots[0];
+    // Beside the block, the stroke stops at the block's edge, level with the word, rather than crossing the rest of its line.
+    const toX = x >= br.right ? br.right + 6 : x >= r.right ? r.right + 6 : r.left + Math.min(r.width / 2, 40), toY = x >= r.right ? r.top + r.height / 2 : (y > r.top ? r.bottom + 4 : r.top - 4);
+    const fromX = x >= r.right ? x - 6 : x + Math.min(nb.width / 2, 40), fromY = x >= r.right ? y + nb.height / 2 : (y > r.top ? y - 2 : y + nb.height + 2);
+    const d = `M${fromX} ${fromY} L${toX} ${toY}`;
     n.style.left = x + 'px'; n.style.top = y + 'px';
     const stroke = svg('path', { d, fill: 'none', stroke: c, 'stroke-width': 2, 'stroke-linecap': 'round' });
     await Promise.all([drawOn(stroke, 360), tween(380, (t) => { n.style.opacity = t; n.style.transform = `translateY(${lerp(6, 0, t)}px)`; }, smooth, 160)]);
@@ -360,12 +368,7 @@ const moves = {
     // The label sits on the curve, at the first spot that does not cover another label.
     const l = document.createElement('div'); l.className = 'arrow-label'; l.textContent = label; l.style.color = c; layer.appendChild(l);
     const lb = l.getBoundingClientRect(), at = (t) => { const u = 1 - t; return { x: u * u * u * s.x + 3 * u * u * t * c1.x + 3 * u * t * t * c2.x + t * t * t * e.x, y: u * u * u * s.y + 3 * u * u * t * c1.y + 3 * u * t * t * c2.y + t * t * t * e.y }; };
-    const taken = [...layer.querySelectorAll('.arrow-label, .note, .text p, .code .ln, table.grid tr, .row, .node, .seg, .bar-label, .side, .compare li, .compare h3, .piece')]
-      .filter((n) => n !== l && getComputedStyle(n).opacity !== '0').flatMap((n) => [...n.getClientRects()]);
-    for (const other of $('links').querySelectorAll('path')) {   // and the other arrows' lines, sampled as small squares
-      if (other === path) continue; const L = other.getTotalLength();
-      for (let d = 0; d <= L; d += 14) { const q = other.getPointAtLength(d); taken.push({ left: q.x - 3, right: q.x + 3, top: q.y - 3, bottom: q.y + 3 }); }
-    }
+    const taken = occupied([l, path]);
     const hits = (x, y) => taken.some((q) => x < q.right + 6 && x + lb.width > q.left - 6 && y < q.bottom + 4 && y + lb.height > q.top - 4);
     let best = null;
     for (const t of [.5, .38, .62, .28, .72, .2, .8]) for (const up of [true, false]) {
@@ -407,6 +410,16 @@ function onCanvas(el, after = 40) {                  // place el at the canvas c
   return el;
 }
 const col = (c, fallback = 'yellow') => PAL[c] || PAL[fallback];
+// Rectangles already taken on screen: content, labels, notes, and the lines of arrows sampled as small squares.
+function occupied(except = []) {
+  const rects = [...layer.querySelectorAll('.arrow-label, .note, .text p, .code .ln, table.grid tr, .row, .node, .seg, .bar-label, .side, .compare li, .compare h3, .piece')]
+    .filter((n) => !except.includes(n) && getComputedStyle(n).opacity !== '0').flatMap((n) => [...n.getClientRects()]);
+  for (const line of $('links').querySelectorAll('path')) {
+    if (except.includes(line)) continue; const L = line.getTotalLength();
+    for (let d = 0; d <= L; d += 14) { const q = line.getPointAtLength(d); rects.push({ left: q.x - 3, right: q.x + 3, top: q.y - 3, bottom: q.y + 3 }); }
+  }
+  return rects;
+}
 function resolve(id) { return document.getElementById(id) || document.getElementById('row-' + id) || stage.figures[id] || null; }
 function arrowhead(c) {                               // one arrowhead marker per colour, made when first needed
   const id = 'ah-' + c.slice(1); if (document.getElementById(id)) return id;

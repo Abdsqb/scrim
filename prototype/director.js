@@ -7,9 +7,11 @@ const MODEL = 'claude-haiku-5-5';
 const COLORS = ['blue', 'teal', 'green', 'yellow', 'gold', 'red', 'pink'];
 
 // Kept identical for every request, so the prompt cache can reuse it.
-const system = `You direct a short animated explanation that plays over a student's own screen. The pieces of their material that their question is about are already lifted onto a dark stage, in a column on the left. You build the explanation on the right, with moves.
+const system = `You are the narrator of a short animated explanation that plays over a student's own screen. The pieces of their material that their question is about are already lifted onto a dark stage, in a column on the left.
 
-The student has already read the material and did not get it. Repeating it, rephrasing it or making it bigger teaches nothing. Give them a new angle on it: a picture of the idea, the process or cause and effect behind it, their own numbers worked through, or a comparison that makes the difference visible. Then tie what you built back to their material with arrows and highlights, so they see where it lives on their page.
+The explanation is what you say. Talk the student through it the way a good tutor would: start from what they are looking at, explain how it works in order, and build to the answer. Not a story with characters, and not a list of facts. The screen illustrates what you are saying at that moment: highlight the term as you mention it, build a diagram as you walk through the idea, draw an arrow when you connect two things. You build visuals on the right, with moves.
+
+The student has already read the material and did not get it. Repeating it or rephrasing it teaches nothing. Give them a new angle: why it works, what it means in practice, their own numbers worked through, or a picture of the idea. Tie what you show back to their material, so they see where it lives on their page.
 
 Reply with one move per line, each a JSON object. No other text, no code fences, no blank lines.
 
@@ -17,7 +19,7 @@ MOVES
 {"move":"focus","id":ID,"color":COLOR}
   Light up a term, cell, line, part or figure that is on stage.
 {"move":"say","text":TEXT}
-  The caption: one sentence of at most 18 words. Say what the visuals cannot show by themselves; do not narrate the moves.
+  What you say next, spoken aloud and shown as a caption: one or two sentences, at most 30 words, conversational. Talk about the idea, not the screen: never "as the diagram shows" or "this arrow".
 {"move":"diagram","type":"flow","id":NEW,"steps":[{"id":NEW,"label":TEXT}, ...]}
   2 to 5 boxes top to bottom joined by arrows: a process, a cause and effect, an order of events. Labels of at most 5 words.
 {"move":"diagram","type":"stack","id":NEW,"unit":"$","bars":[{"id":NEW,"label":TEXT,"segments":[{"id":NEW,"label":TEXT,"value":NUMBER,"color":COLOR}, ...]}, ...]}
@@ -39,14 +41,23 @@ Use only ids listed under ON STAGE, or ids you created earlier in your reply. Ev
 COLORS
 blue, teal, green, yellow, gold, red, pink. One colour per idea, and the same colour for the same idea everywhere: a term, its block in a diagram and the arrow between them.
 
+HOW BIG
+Match the size of the explanation to how hard the idea is. A screen full of explanation confuses more than it helps.
+- Easy (a term, a definition, a single fact): at most 3 things said and 3 visual moves (highlights and notes), no diagram.
+- Medium (a process, a relationship, a calculation): at most 5 things said and 7 visual moves, including one diagram or line of math and an arrow or two back to the material.
+- Hard (several ideas that depend on each other): at most 6 things said and 11 visual moves, including at most two diagrams.
+Things said are say moves; visual moves are everything else except hold.
+Decide how hard the question really is before anything else; most questions are easy or medium. Your first line says so:
+{"move":"level","level":"easy"}
+The app holds you to these limits and drops anything beyond them, so plan within them and keep your last say for the answer.
+
 HOW TO EXPLAIN
-- Open by focusing the key term or number the question is about.
-- Build at most two diagrams. Choose the type that fits: stack for amounts and balances, flow for processes and consequences, compare for differences.
-- Use the student's own words and numbers in labels, so the diagram is clearly about their material.
-- Connect at least one diagram back to the material with an arrow.
-- One idea at a time: a visual move, then a caption, then a hold.
-- End with one caption that answers the question in plain words.
-- 8 to 16 moves in all.
+- Start with what you say. Each visual move goes right next to the line that talks about it, never in a batch.
+- Open on the student's material: focus the key term or number as you first mention it.
+- Choose a diagram type that fits: stack for amounts and balances, flow for processes and consequences, compare for differences.
+- Use the student's own words and numbers in labels, so it is clearly about their material.
+- Hold after a line that needs a moment to sink in.
+- End with what you say that answers the question in plain words.
 - Do not invent facts that contradict the material. If the material does not answer the question, say so in a caption and show what it does say.
 - Start your reply with the first JSON line. Do not explain your plan.`;
 
@@ -77,7 +88,17 @@ function inventory(placed) {
 const NEW_ID = /^d-[A-Za-z0-9-]{1,30}$/;
 const str = (v, max) => typeof v === 'string' && v.trim().length > 0 && v.length <= max;
 // Checks one move against what is known to exist. Returns an error, or null; ids a valid move creates are added to `known`.
-function check(m, known) {
+// How much each level may build. The model judges the level in its first line; the limits are enforced here.
+// Narration and visuals are counted apart: what crowds the screen is visuals, and the narration's last line is the answer.
+const LIMITS = { easy: { diagrams: 0, visuals: 3, says: 3 }, medium: { diagrams: 1, visuals: 7, says: 5 }, hard: { diagrams: 2, visuals: 11, says: 6 } };
+function check(m, known, budget = { level: 'medium', diagrams: 0, visuals: 0, says: 0, started: false }) {
+  if (m && m.move === 'level') {
+    if (budget.started || !LIMITS[m.level]) return 'level must come first and be easy, medium or hard';
+    budget.level = m.level; return null;
+  }
+  const limit = LIMITS[budget.level], kind = m && m.move === 'say' ? 'says' : m && m.move === 'hold' ? null : 'visuals';
+  if (kind && budget[kind] >= limit[kind]) return `more than ${limit[kind]} ${kind === 'says' ? 'things said' : 'visual moves'} for a ${budget.level} question`;
+  if (m && m.move === 'diagram' && budget.diagrams >= limit.diagrams) return `${limit.diagrams ? 'one diagram too many' : 'a diagram'} for a ${budget.level} question`;
   if (!m || typeof m.move !== 'string') return 'not a move';
   const has = (id) => typeof id === 'string' && known.has(id);
   const fresh = [], claim = (id) => { if (!NEW_ID.test(id || '') || known.has(id) || fresh.includes(id)) return false; fresh.push(id); return true; };
@@ -115,13 +136,17 @@ function check(m, known) {
     default: return 'unknown move ' + m.move;
   }
   for (const id of fresh) known.add(id);
+  budget.started = true; if (kind) budget[kind]++; if (m.move === 'diagram') budget.diagrams++;
   return null;
 }
 
 // Ask the Director. onMove gets each checked move as soon as its line arrives; onReject gets anything refused. Resolves with usage.
-async function direct(client, { question, placed, onMove, onReject = () => {} }) {
-  const inv = inventory(placed), known = new Set(inv.ids);
-  const parser = casting.lineParser((m) => { const err = check(m, known); if (err) onReject(err, m); else onMove(m); }, (line) => onReject('not JSON', line.slice(0, 80)));
+async function direct(client, { question, placed, onMove, onLevel = () => {}, onReject = () => {} }) {
+  const inv = inventory(placed), known = new Set(inv.ids), budget = { level: 'medium', diagrams: 0, visuals: 0, says: 0, started: false };
+  const parser = casting.lineParser((m) => {
+    const err = check(m, known, budget); if (err) return onReject(err, m);
+    if (m.move === 'level') onLevel(m.level); else onMove(m);   // the level is for the checker; the stage never sees it
+  }, (line) => onReject('not JSON', line.slice(0, 80)));
   const stream = client.messages.stream({
     model: MODEL, max_tokens: 8000, output_config: { effort: 'low' },
     system: [{ type: 'text', text: system, cache_control: { type: 'ephemeral' } }],
@@ -132,4 +157,4 @@ async function direct(client, { question, placed, onMove, onReject = () => {} })
   return (await stream.finalMessage()).usage;
 }
 
-module.exports = { MODEL, system, inventory, check, direct };
+module.exports = { MODEL, system, inventory, check, direct, LIMITS };

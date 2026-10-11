@@ -142,6 +142,7 @@ app.whenReady().then(async () => {
           if (process.env.SCRIM_DEBUG) log('move', JSON.stringify(m).slice(0, 300));
           feed(m.move === 'write' ? { move: 'write', row: m.row, size: 36, parts: m.parts } : m);
         },
+        onLevel: (level) => log(`Director judged the question ${level}`),
         onReject: (why, m) => log('Director move refused:', why, JSON.stringify(m || '').slice(0, 200)),
       });
       log(`Director done in ${((performance.now() - t1) / 1000).toFixed(2)} s: ${moves} moves | tokens ${dUsage.input_tokens} in, ${dUsage.output_tokens} out`);

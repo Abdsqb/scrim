@@ -52,6 +52,15 @@ Named like a theatre production: Casting picks the pieces, the Director writes t
 - **Moves**: a small fixed vocabulary. Casting's pieces: `lift`, `recede`, `write`, `code`, `text`, `table`, `place`. The Director's: `focus`, `say`, `diagram` (flow, stack, compare), `arrow`, `note`, `write`, `hold`. Older ones the demo uses: `split`, `match`, `swap`, `show`, `indicate`, `ask`. The app plays `wait` and `restore`. Each is a plain object; a move that cannot play is skipped and reported, not fatal.
 - **Director** (`prototype/director.js`): a model call that turns the question plus the pieces on stage into moves, streamed one JSON object per line. Its job is a new angle (a picture, a process, the student's numbers worked through), never a rephrasing. Every move is checked against the ids on stage before it plays.
 
+## How explanations should feel (the owner's principles)
+
+These shape every scene. The Director's prompt follows them; check new moves and prompts against them.
+
+- **The narrator explains; the screen illustrates.** The explanation is spoken: a tutor talking the student through how something works, in order, building to the answer. It is not a story with characters, and not a list of facts. Visuals appear at the moment the narration reaches them, to help the student see what is being said.
+- **Proportional.** The size of the explanation matches how hard the idea is. An easy term gets a highlight and a sentence or two. A process or relationship gets one diagram. Only a genuinely tangled idea gets two. A screen full of explanation confuses more than it helps.
+- **A new angle, never a repeat.** The student has already read the material. Showing it bigger or rephrasing it teaches nothing; a picture of the idea, the process behind it, or their own numbers worked through does.
+- **Their material, their numbers.** Diagrams use the student's own terms and figures, and arrows tie them back to where they are on the page.
+
 ## Rules that must hold
 
 - **The director writes moves, never code.** No model output is ever executed. A move the stage does not know is rejected.

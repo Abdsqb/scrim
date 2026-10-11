@@ -33,7 +33,21 @@ Run on 2026-10-10 on the same PC, at 100% scaling, against the sample notes page
 
 Not tested: a real PDF with a real mouse, which is what "done" means for step 1.
 
-## The Director (first version)
+## The Director, narration-led and proportional
+
+Run on 2026-10-11 after the owner's two principles (see "How explanations should feel" in CLAUDE.md): the narrator explains and the screen illustrates; the size of the explanation matches the difficulty.
+
+The Director's first line now judges the question easy, medium or hard, and the checker holds it to that level's limits. Narration and visuals are counted apart, because what crowds the screen is visuals and the last thing said is the answer: easy allows 3 things said and 3 visual moves with no diagram; medium 5 and 7 with one diagram; hard 6 and 11 with two.
+
+| Question | Judged | What it built |
+| --- | --- | --- |
+| "what are assets?" (balance-sheet slide) | easy | 6 to 7 moves: highlights, one note, three spoken lines. No diagram |
+| "what happens during anaphase?" | easy | Highlights and narration only |
+| "I don't understand stockholders' equity" | medium | 11 moves: one stack bar, one arrow from the table, E = A - L, narration ending on the answer with the slide's numbers |
+| "how is net income calculated in this table?" | medium | One flow, narration walking down the statement |
+
+The narration now reads like a tutor talking ("Think of the $500,000 of assets as one stack..."), with each visual next to the line about it. A first limit that counted every move cut off the closing line; separate budgets fixed that. Notes now look for free space (beside the paragraph, level with the word, then below or above) instead of landing on the text.
+
 
 Run on 2026-10-10 with `npx electron prototype/live.js --auto-ask="..." --screen=samples/NN-....png`, which saves a still every 4 s to `samples/stills/`. Judged by looking at the stills; there is no automatic score for explanations yet.
 

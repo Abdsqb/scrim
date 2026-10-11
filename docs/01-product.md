@@ -10,6 +10,15 @@ Compared with watching a real explainer video:
 - It answers your question. A video covers what its creator chose to cover.
 - You can talk back. Stop it, ask why, and it changes course.
 
+## How explanations should feel
+
+Set by the owner on 2026-10-10 after seeing the first Director scenes.
+
+- **The narrator explains; the screen illustrates.** The explanation is spoken: a tutor talking the student through how something works, in order, building to the answer. It is not a story with characters, and not a list of facts. Visuals appear at the moment the narration reaches them, to help the student see what is being said.
+- **Proportional.** The size of the explanation matches how hard the idea is. An easy term gets a highlight and a sentence or two. A process or relationship gets one diagram. Only a genuinely tangled idea gets two. A screen full of explanation confuses more than it helps.
+- **A new angle, never a repeat.** The student has already read the material. Showing it bigger or rephrasing it teaches nothing; a picture of the idea, the process behind it, or their own numbers worked through does.
+- **Their material, their numbers.** Diagrams use the student's own terms and figures, and arrows tie them back to where they are on the page.
+
 ## The scene version one must do
 
 You are reading typed lecture notes. You hold a key and say "I don't understand how this equation fits into this algorithm."
