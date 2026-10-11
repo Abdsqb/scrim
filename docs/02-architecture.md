@@ -134,7 +134,9 @@ Casting's first line chooses the mode for each question.
 - **Lift**: the person wants to understand content. Pieces are lifted off the page, the page recedes, and the Director builds beside them.
 - **Point**: the person wants to do or find something on the screen: use an app feature, find a setting, deal with an error message, find which part of a chart answers a "which" question. Nothing moves. Casting returns targets (`kind: "target"`, with a `label` and a `role` such as button, menu, field), which become invisible `anchor` boxes on the stage. `dim` lays a light shade over the screen; `spotlight` cuts a hole in that shade around one target and glides to the next, so the spotlit control is at full brightness; `marker` pins a numbered step; `click` moves a ghost cursor to a target and shows a click. Pointing moves do not count toward the visual budget, since each spotlight replaces the last.
 
-Limit: a feature inside a closed menu is not on the screenshot, so the Director points at what opens it and says what to look for next. A guided mode that waits for the click and looks again would remove this limit.
+Point mode runs on the **live screen**. The stage window is transparent; once Casting has found the targets from the screenshot, `golive` fades the screenshot out and the app calls `setIgnoreMouseEvents(true, { forward: true })`, so every click goes through to the apps underneath while the guidance stays on top, the way Clicky works. Lift mode keeps the frozen screenshot over a black backdrop. Esc is a global shortcut, so it works whichever window has focus.
+
+Limit: once the person clicks and a menu opens, the guidance does not know; it keeps pointing where it pointed. A feature inside a closed menu is not on the screenshot either, so the Director points at what opens it and says what to look for next. A guided mode that waits for the click and looks again would remove this limit.
 
 ## The director
 

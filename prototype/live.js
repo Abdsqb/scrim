@@ -53,7 +53,7 @@ app.whenReady().then(async () => {
 
   // The stage is created hidden at start-up so that showing it later is instant.
   const overlay = cover(new BrowserWindow({ x, y, width: W, height: H, frame: false, show: false, alwaysOnTop: true, skipTaskbar: true, resizable: false,
-    backgroundColor: '#000000', webPreferences: { backgroundThrottling: false } }), display.bounds);
+    transparent: true, backgroundColor: '#00000000', webPreferences: { backgroundThrottling: false } }), display.bounds);
   overlay.setAlwaysOnTop(true, 'screen-saver');
   await overlay.loadFile(path.join(__dirname, 'stage.html'));
   const js = (code) => overlay.webContents.executeJavaScript(code);
@@ -107,7 +107,13 @@ app.whenReady().then(async () => {
     // Simple placement until the stage owns layout (build step 2): Casting's pieces in a column on the left, in the order Casting
     // ranked them, and the Director's canvas on the right. Heights are estimates, since nothing is measured until it is on stage.
     // Only one code block can be live, so others stay pictures.
-    if (mode === 'point') feed({ move: 'dim', pause: 0 });
+    if (mode === 'point') {
+      // Point mode runs on the live screen: the screenshot fades out, and the window lets every click through to the apps under it,
+      // so the person can press the real buttons while the guidance stays on top. Esc still ends it (a global shortcut).
+      feed({ move: 'golive', pause: 0 });
+      overlay.setIgnoreMouseEvents(true, { forward: true });
+      feed({ move: 'dim', pause: 0 });
+    }
     else feed({ move: 'recede', pause: 120 });
     const left = 56, colW = Math.round(W * 0.36), mid = left + colW / 2;
     let y = 130, codeLive = false;
@@ -186,7 +192,8 @@ app.whenReady().then(async () => {
           const running = js(`run('feed')`);
           if (AUTO_ASK) {                               // test: save stills of the scene every 4 s, then press Esc
             const shots = path.join(__dirname, '..', 'samples', 'stills'); require('fs').mkdirSync(shots, { recursive: true });
-            for (let k = 1; k <= 9; k++) setTimeout(async () => require('fs').writeFileSync(path.join(shots, `t${String(k * 4).padStart(2, '0')}s.png`), (await overlay.webContents.capturePage()).toPNG()), k * 4000);
+            const screenPng = async () => (await desktopCapturer.getSources({ types: ['screen'], thumbnailSize: { width: Math.round(W * sf), height: Math.round(H * sf) } }))[0].thumbnail.toPNG();
+            for (let k = 1; k <= 9; k++) setTimeout(async () => require('fs').writeFileSync(path.join(shots, `t${String(k * 4).padStart(2, '0')}s.png`), await screenPng()), k * 4000);
             setTimeout(() => js('cancel()'), 38000);
           }
           placed = await castScene(shot, question);
@@ -203,7 +210,7 @@ app.whenReady().then(async () => {
       const result = await js(`run(${JSON.stringify(script)})`);
       return await finish(result, before, { picks });
     } catch (e) { log('ERROR', e.stack || e); return { error: String(e) }; }
-    finally { selecting = false; globalShortcut.unregister('Escape'); globalShortcut.unregister('Return'); overlay.hide(); busy = false; }
+    finally { selecting = false; globalShortcut.unregister('Escape'); globalShortcut.unregister('Return'); overlay.setIgnoreMouseEvents(false); overlay.hide(); busy = false; }
   }
 
   async function finish(result, before, extra) {
