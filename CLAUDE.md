@@ -1,6 +1,6 @@
 # Scrim
 
-A desktop app that turns whatever is on your screen into an explainer video you can interrupt. The user presses a hotkey, asks a question about something on screen, and the screen appears to come apart: pieces lift off the page, the page falls away, and the pieces are taken apart, matched, and animated to answer the question. Follow-up questions change the scene that is already there. Esc puts the screen back.
+A desktop app that turns whatever is on your screen into an explainer video you can interrupt. For anyone, about anything on screen: course material, how to use an app, what an error means, what a chart shows. The user presses a hotkey, asks a question about something on screen, and the screen appears to come apart: pieces lift off the page, the page falls away, and the pieces are taken apart, matched, and animated to answer the question. Follow-up questions change the scene that is already there. Esc puts the screen back.
 
 Named Scrim, after the theatre curtain that looks solid until it is lit from behind and the scene beyond it shows through. Here the screen is the scrim.
 
@@ -16,6 +16,7 @@ Works today:
 - Capture the screen, freeze it in a full-screen always-on-top window, restore it.
 - Ask a typed question on any screen, about anything: Casting (`prototype/casting.js`, Claude Haiku 5.5) finds the pieces on the full screenshot (equations, code, text passages, tables, figures), they lift as they stream in, the page recedes, and each turns into live content: math, code lines, text with addressable key terms, a table grid, or a picture. Needs `ANTHROPIC_API_KEY` in the git-ignored `.env`.
 - The Director (`prototype/director.js`, Claude Haiku 5.5) then explains with a new angle instead of repeating the material: it highlights terms, builds diagrams (flow, stack, compare), draws arrows from the material to them, adds notes and lines of math, and captions. Casting's pieces sit in a column on the left; the Director builds on the right.
+- Two modes, chosen by Casting per question. **Lift** pulls content out to explain it. **Point** leaves the screen in place for questions about using or finding something (an app feature, a setting, an error dialog, which bar in a chart): the screen dims under a shade, and the Director spotlights controls, numbers the steps, shows a ghost cursor clicking, and narrates.
 - Dragging a box around a piece is the fallback. Each lifts on release; Enter recedes the page; Esc restores.
 - A stage that plays a script of moves in an explainer-video style (see `docs/03-motion-style.md`).
 - A 33-second demo scene with a follow-up question, played live or recorded frame by frame.

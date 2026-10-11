@@ -1,5 +1,6 @@
 // Casting: one vision model call that picks the pieces of the screen a question is about and reads them: equations, code, text,
-// tables, or figures (which are not read, only moved).
+// tables, or figures (which are not read, only moved). For a question about using or finding something, it returns targets instead:
+// places on the screen to point at, which stay where they are.
 // The reply streams one JSON object per line, one line per piece, so the first piece can lift before the rest arrive.
 // The model's boxes are rough, so snap() tightens each one to the content on screen before it is lifted.
 const katex = require('katex');
@@ -7,11 +8,19 @@ const katex = require('katex');
 const MODEL = 'claude-haiku-5-5';
 
 // Kept identical for every request of a given image size, so the prompt cache can reuse it.
-const system = (W, H) => `You look at a screenshot of a student's screen, find the pieces of their course material that their question is about, and convert each piece into structured content. Any subject: math, code, science, business, history, anything.
+const system = (W, H) => `You look at a screenshot of someone's screen and the question they asked about it, and find the parts of the screen the answer needs. Anything can be on screen: course material in any subject, an app, a website, a document or form, an error message, a chart, a photo.
 
 The screenshot is ${W} by ${H} pixels. Boxes are [x, y, width, height] in those pixels, with 0,0 at the top left.
 
-Reply with one JSON object per line, one line per piece, most important first. No other text, no code fences, no blank lines.
+First decide how the question is best answered:
+- lift: they want to understand content, such as an idea, a formula, code, a passage, a table or what a chart means. The pieces are lifted off the screen and explained beside it.
+- point: they want to do or find something on the screen, such as how to use a feature, where a setting is, what to click or fill in, or which part of a chart, picture or message answers a "which" or "where" question ("which month was highest?"). The screen stays where it is and the explanation points at places on it.
+
+Reply with one JSON object per line. No other text, no code fences, no blank lines. The first line says which:
+{"mode":"lift"}
+Then one line per piece, most important first.
+
+LIFT PIECES
 
 For an equation or expression:
 {"piece":"p1","kind":"equation","box":[x,y,w,h],"tex":"...","terms":[{"id":"...","tex":"..."}, ...]}
@@ -28,10 +37,20 @@ For a table:
 For a chart, diagram, photo or anything else that is a picture rather than text:
 {"piece":"p5","kind":"figure","box":[x,y,w,h],"about":"..."}
 
+POINT TARGETS
+{"piece":"t1","kind":"target","box":[x,y,w,h],"label":"...","role":"button"}
+  A place to point at: a button, menu, tab, icon, field, link, toggle, a cell, or a part of a chart, form, picture or message. label is what it is, as written on screen when it has text, such as "Insert" or "Dark mode". role is one of button, menu, tab, icon, field, link, toggle, cell, region.
+  In point mode you may also add one text piece, when what a message on screen says matters (an error, a warning).
+
 If nothing on screen matches the question:
 {"kind":"none","reason":"..."}
 
-Choosing pieces:
+Choosing targets in point mode:
+- Pick the controls or places the person needs, in the order they would use them, starting from what is visible now. At most six.
+- If the feature is inside a menu or panel that is closed, point at what opens it and stop. Never guess where hidden items are.
+- Small controls matter: the box must enclose the control tightly.
+
+Choosing pieces in lift mode:
 - Pick what answers the question and nothing else. At most four pieces.
 - For a question about a concept ("I don't understand X", "what is X"), pick the passage that defines or explains X, plus a table, figure or equation on screen only if it shows X directly.
 - Pick the smallest piece that holds the answer: the one bullet or paragraph about X, not the whole slide or page, unless the question is about all of it.
@@ -76,7 +95,8 @@ function lineParser(onLine, onBad) {
 }
 
 const KOPT = { trust: (c) => c.command === '\\htmlId', strict: false, throwOnError: true, output: 'html' };
-const KINDS = ['equation', 'code', 'text', 'table', 'figure'];
+const KINDS = ['equation', 'code', 'text', 'table', 'figure', 'target'];
+const ROLES = ['button', 'menu', 'tab', 'icon', 'field', 'link', 'toggle', 'cell', 'region'];
 const isStrings = (a, max) => Array.isArray(a) && a.length > 0 && a.length <= max && a.every((s) => typeof s === 'string');
 // An equation arrives whole, as one LaTeX string, with terms copied out of it. Models write equations reliably but cut them into
 // parts badly (a fraction's numerator and denominator in separate parts), so the cutting happens here instead.
@@ -119,7 +139,8 @@ function validateBox(p, W, H) {
   if (!p || !KINDS.includes(p.kind)) return 'unknown kind ' + (p && p.kind);
   const b = p.box;
   if (!Array.isArray(b) || b.length !== 4 || !b.every(Number.isFinite)) return 'box is not [x,y,w,h]';
-  if (b[2] < 12 || b[3] < 12 || b[0] < 0 || b[1] < 0 || b[0] + b[2] > W + 2 || b[1] + b[3] > H + 2) return 'box is tiny or off screen';
+  const min = p.kind === 'target' ? 6 : 12;           // a toolbar icon can be small
+  if (b[2] < min || b[3] < min || b[0] < 0 || b[1] < 0 || b[0] + b[2] > W + 2 || b[1] + b[3] > H + 2) return 'box is tiny or off screen';
   return null;
 }
 const validate = (p, W, H) => validateBox(p, W, H) || validateContent(p);
@@ -143,6 +164,10 @@ function validateContent(p) {
     p.terms = (Array.isArray(p.terms) ? p.terms : []).filter((t) => t && typeof t.id === 'string' && typeof t.text === 'string' && t.text && all.includes(t.text) && !seen.has(t.id) && seen.add(t.id)).slice(0, 6);
   } else if (p.kind === 'table') {
     if (!Array.isArray(p.rows) || !p.rows.length || p.rows.length > 20 || !p.rows.every((r) => isStrings(r, 8) && r.every((c) => c.length <= 200))) return 'table rows are not a grid of strings';
+  } else if (p.kind === 'target') {
+    if (!(typeof p.label === 'string' && p.label.trim())) return 'target needs a label';
+    if (p.label.length > 80) p.label = p.label.slice(0, 77) + '...';   // a whole message used as a label is still a good target
+    if (!ROLES.includes(p.role)) p.role = 'region';
   } else if (p.kind === 'figure') {
     if (p.about != null && typeof p.about !== 'string') return 'figure about is not a string';
   }
@@ -158,7 +183,7 @@ function validateContent(p) {
 // If the block reaches the edge of the search area, it is running into neighbouring content (or a panel wider than the search, like
 // a notebook cell), so the model's own box is kept: a slightly loose box looks fine when lifted, one that swallows a neighbour does not.
 function snap(px, W, H, box, { kind = 'equation', margin = 28, gap = 6, thresh = 20 } = {}) {
-  if (kind === 'table' || kind === 'figure') return box;   // full of deliberate gaps (columns, a chart's white space): keep the model's box
+  if (kind === 'table' || kind === 'figure' || kind === 'target') return box;   // deliberate gaps (columns, white space), or a control on a busy screen: keep the model's box
   const [x, y, w, h] = box;
   const X0 = Math.max(0, Math.floor(x - margin)), Y0 = Math.max(0, Math.floor(y - margin));
   const X1 = Math.min(W, Math.ceil(x + w + margin)), Y1 = Math.min(H, Math.ceil(y + h + margin));
@@ -204,8 +229,9 @@ function snap(px, W, H, box, { kind = 'equation', margin = 28, gap = 6, thresh =
 // onPiece is called with each valid piece the moment its line arrives (boxes in the sent image's pixels); onReject with anything
 // refused. Settings come from the accuracy tests in docs/06-test-results.md: thinking stays on at low effort, because without it the
 // model picks decoys. Resolves with the token usage.
-async function cast(client, { png, width, height, question, onPiece, onReject = () => {} }) {
+async function cast(client, { png, width, height, question, onPiece, onMode = () => {}, onReject = () => {} }) {
   const parser = lineParser((p) => {
+    if (p && (p.mode === 'lift' || p.mode === 'point') && !p.kind) return onMode(p.mode);
     if (p.kind === 'none') return onReject('nothing matches: ' + p.reason);
     const err = validate(p, width, height); if (err) return onReject(err);
     onPiece(p);

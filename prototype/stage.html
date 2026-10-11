@@ -36,6 +36,11 @@
   #hint input { width: 520px; background: transparent; border: 0; outline: 0; color: #fff; font: 16px "Segoe UI", "DejaVu Sans", sans-serif; }
   #hint input::placeholder { color: #9aa0ab; }
   #hint small { color: #9aa0ab; font-size: 13px; padding-right: 10px; }
+  .anchor { position: absolute; pointer-events: none; border-radius: 6px; }
+  #spot { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
+  .marker { position: absolute; width: 34px; height: 34px; border-radius: 50%; color: #10131a; font: 700 18px/34px "Segoe UI", sans-serif; text-align: center;
+            box-shadow: 0 3px 12px rgba(0,0,0,.55); transform: scale(0); }
+  .cursor { position: absolute; width: 26px; height: 34px; pointer-events: none; filter: drop-shadow(0 3px 6px rgba(0,0,0,.6)); }
   .note { position: absolute; font: 21px "Segoe Print", "Segoe UI", sans-serif; white-space: nowrap; opacity: 0; text-shadow: 0 2px 10px rgba(0,0,0,.8); }
   .flow { display: flex; flex-direction: column; align-items: stretch; }
   .node { border: 2px solid; border-radius: 12px; padding: 14px 16px; color: #eef0f4; font: 20px/1.3 "Segoe UI", "DejaVu Sans", sans-serif; text-align: center;
@@ -56,6 +61,7 @@
 <img id="shot">
 <div id="veil"></div>
 <svg id="links"></svg>
+<svg id="spot"></svg>
 <div id="layer"></div>
 <svg id="ink"></svg>
 <div id="ask"></div>
@@ -145,6 +151,14 @@ const stage = { pieces: {}, rows: {}, parts: {}, code: null, texts: {}, tables: 
 
 // ---------- the moves ----------
 const moves = {
+  async dim() {                                       // point mode: the screen stays sharp and in place under a light shade
+    spotShade(); stage.dimmed = true;                 // spotlights later cut a hole in this shade, so the spotlit control is at full brightness
+    const shade = $('spot-shade'); await tween(600, (t) => { shade.setAttribute('opacity', (.55 * t).toFixed(3)); });
+  },
+  async anchor({ piece, rect }) {                     // an invisible box over a place on the real screen, so moves can point at it
+    const a = document.createElement('div'); a.className = 'anchor'; a.id = piece;
+    Object.assign(a.style, { left: rect.x + 'px', top: rect.y + 'px', width: rect.w + 'px', height: rect.h + 'px' }); layer.appendChild(a);
+  },
   async recede() {                                    // the page falls back, out of focus, and the scene goes dark
     await Promise.all([
       tween(900, (t) => { $('shot').style.transform = `scale(${lerp(1, .95, t)})`; $('shot').style.filter = `blur(${lerp(0, 9, t)}px) brightness(${lerp(1, .32, t)}) saturate(${lerp(1, .5, t)})`; }),
@@ -305,7 +319,7 @@ const moves = {
   // ----- what the Director builds: highlights, notes, arrows and diagrams, all on the shared clock -----
   async focus({ id, color = 'yellow' }) {             // light up something already on stage: a term, a cell, a line, a part, a figure
     const el = resolve(id), c = col(color); if (!el) throw new Error('focus: nothing on stage is called ' + id);
-    if (el.tagName === 'IMG' || el.classList.contains('piece')) {   // a figure gets an outline drawn round it
+    if (el.tagName === 'IMG' || el.classList.contains('piece') || el.classList.contains('anchor')) {   // a figure or a place on the real screen gets an outline
       const b = el.getBoundingClientRect(), o = svg('rect', { x: b.left - 8, y: b.top - 8, width: b.width + 16, height: b.height + 16, rx: 10, fill: 'none', stroke: c, 'stroke-width': 3 });
       await drawOn(o, 700); return;
     }
@@ -380,19 +394,56 @@ const moves = {
     await tween(320, (t) => { l.style.opacity = t; });
   },
   async diagram(m) { const f = diagrams[m.type]; if (!f) throw new Error('unknown diagram ' + m.type); await f(m); },
+  async spotlight({ id }) {                           // darken everything but one place; the hole glides from the last place to this one
+    const el = resolve(id); if (!el) throw new Error('spotlight: nothing on stage is called ' + id);
+    const b = el.getBoundingClientRect(), pad = 10, to = { x: b.left - pad, y: b.top - pad, w: b.width + 2 * pad, h: b.height + 2 * pad };
+    spotShade();
+    if (!stage.spot) stage.spot = { x: to.x - 60, y: to.y - 60, w: to.w + 120, h: to.h + 120 };   // the first spotlight closes in on its place
+    const from = { ...stage.spot }, hole = $('spot-hole'), shade = $('spot-shade'), o0 = parseFloat(shade.getAttribute('opacity'));
+    await tween(700, (t) => {
+      for (const k of ['x', 'y', 'w', 'h']) stage.spot[k] = lerp(from[k], to[k], t);
+      hole.setAttribute('x', stage.spot.x); hole.setAttribute('y', stage.spot.y); hole.setAttribute('width', stage.spot.w); hole.setAttribute('height', stage.spot.h);
+      shade.setAttribute('opacity', lerp(o0, .72, t).toFixed(3));
+    });
+  },
+  async marker({ id, n, color = 'yellow' }) {         // a numbered step, pinned to the top left corner of a place
+    const el = resolve(id), c = col(color); if (!el) throw new Error('marker: nothing on stage is called ' + id);
+    const b = el.getBoundingClientRect(), m = document.createElement('div'); m.className = 'marker'; m.textContent = n; m.style.background = c;
+    m.style.left = Math.max(4, b.left - 20) + 'px'; m.style.top = Math.max(4, b.top - 20) + 'px'; layer.appendChild(m);
+    await tween(420, (t) => { m.style.transform = `scale(${t < .7 ? lerp(0, 1.15, t / .7) : lerp(1.15, 1, (t - .7) / .3)})`; }, linear);
+  },
+  async click({ id, color = 'yellow' }) {             // a ghost cursor glides to a place and clicks it
+    const el = resolve(id), c = col(color); if (!el) throw new Error('click: nothing on stage is called ' + id);
+    const b = el.getBoundingClientRect(), to = { x: b.left + b.width / 2, y: b.top + b.height / 2 };
+    let cur = $('ghost-cursor');
+    if (!cur) {
+      cur = document.createElement('div'); cur.className = 'cursor'; cur.id = 'ghost-cursor';
+      cur.innerHTML = '<svg viewBox="0 0 26 34" width="26" height="34"><path d="M2 2 L2 27 L8.5 21 L13 31 L17.5 29 L13 19.5 L22 19.5 Z" fill="#fff" stroke="#111" stroke-width="1.8" stroke-linejoin="round"/></svg>';
+      layer.appendChild(cur); stage.cursorAt = { x: innerWidth * .62, y: innerHeight * .72 };
+    }
+    const from = { ...stage.cursorAt };
+    await tween(750, (t) => { const k = 4 * t * (1 - t) * 40; stage.cursorAt = { x: lerp(from.x, to.x, t), y: lerp(from.y, to.y, t) - k };
+      cur.style.left = (stage.cursorAt.x - 2) + 'px'; cur.style.top = (stage.cursorAt.y - 2) + 'px'; });
+    const ring = svg('circle', { cx: to.x, cy: to.y, r: 4, fill: 'none', stroke: c, 'stroke-width': 3 });
+    await Promise.all([
+      tween(160, (t) => { cur.style.transform = `scale(${1 - .18 * thereAndBack(t)})`; }, linear),
+      tween(520, (t) => { ring.setAttribute('r', 4 + 26 * t); ring.style.opacity = 1 - t; }, rushFrom),
+    ]);
+    ring.remove();
+  },
   async say({ text }) { const c = $('caption');
     if (c.textContent) await tween(200, (t) => { c.style.opacity = 1 - t; c.style.transform = `translateY(${-8 * t}px)`; });
     c.textContent = text; await tween(380, (t) => { c.style.opacity = t; c.style.transform = `translateY(${lerp(10, 0, t)}px)`; }); },
   async hold({ ms }) { await hold(ms); },
   async wait() { await new Promise((r) => { stage.release = r; }); stage.release = null; },   // played by the app, not the director: hold until the user presses Esc
   async restore() {                                   // everything lets go and the page comes back into focus
-    const things = [...layer.children, ...ink.children, ...$('links').children, $('caption'), $('ask')];
+    const things = [...layer.children, ...ink.children, ...$('links').children, ...$('spot').children, $('caption'), $('ask')];
     await lagged(things, 380, 18, (e, t) => { e.style.opacity = (e._o0 ?? (e._o0 = parseFloat(getComputedStyle(e).opacity))) * (1 - t); });
     if (stage.receded) await Promise.all([
       tween(800, (t) => { $('shot').style.transform = `scale(${lerp(.95, 1, t)})`; $('shot').style.filter = `blur(${lerp(9, 0, t)}px) brightness(${lerp(.32, 1, t)}) saturate(${lerp(.5, 1, t)})`; }),
       tween(800, (t) => { $('veil').style.opacity = 1 - t; }),
     ]);
-    stage.receded = false; $('veil').style.opacity = 0;
+    stage.receded = false; stage.dimmed = false; stage.spot = null; $('spot').innerHTML = ''; $('veil').style.opacity = 0;
     layer.innerHTML = ''; ink.innerHTML = ''; $('links').innerHTML = ''; $('caption').textContent = ''; $('caption').style.opacity = 0; $('ask').style.opacity = 0;
     $('shot').style.transform = ''; $('shot').style.filter = ''; stage.pieces = {}; stage.rows = {}; stage.parts = {}; stage.code = null; stage.texts = {}; stage.tables = {}; stage.figures = {}; canvas.y = canvas.top; canvas.x = canvas.left; canvas.colW = 0;
   },
@@ -410,6 +461,11 @@ function onCanvas(el, after = 40) {                  // place el at the canvas c
   return el;
 }
 const col = (c, fallback = 'yellow') => PAL[c] || PAL[fallback];
+function spotShade() {                                // the shade point mode dims the screen with; a spotlight is a hole in it
+  if ($('spot-shade')) return;
+  $('spot').innerHTML = `<defs><mask id="spot-mask"><rect width="100%" height="100%" fill="#fff"/><rect id="spot-hole" rx="10" fill="#000" width="0" height="0"/></mask></defs>
+    <rect width="100%" height="100%" fill="rgb(4,6,10)" mask="url(#spot-mask)" id="spot-shade" opacity="0"/>`;
+}
 // Rectangles already taken on screen: content, labels, notes, and the lines of arrows sampled as small squares.
 function occupied(except = []) {
   const rects = [...layer.querySelectorAll('.arrow-label, .note, .text p, .code .ln, table.grid tr, .row, .node, .seg, .bar-label, .side, .compare li, .compare h3, .piece')]

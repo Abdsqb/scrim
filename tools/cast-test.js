@@ -35,7 +35,7 @@ function readOk(p, q) {
   if (!p.read && p.read !== undefined) return false;
   if (q.kind === 'text') return !!p.lines && similar(letters(p.lines.join(' ')), letters(q.lines.join(' '))) >= 0.95;
   if (q.kind === 'table') return !!p.rows && similar(letters(p.rows.flat().join(' ')), letters(q.rows.flat().join(' '))) >= 0.95;
-  if (q.kind === 'figure') return true;                // figures are not read, only moved
+  if (q.kind === 'figure' || q.kind === 'target') return true;   // figures and targets are not read, only moved or pointed at
   if (q.kind === 'equation') return typeof p.tex === 'string' && symbols(p.tex) === symbols(q.tex);
   return !!p.lines && JSON.stringify(p.lines.map((l) => l.trimEnd())) === JSON.stringify(q.lines.map((l) => l.trimEnd()));
 }
@@ -60,9 +60,10 @@ app.whenReady().then(async () => {
       const sendW = SEND_W || Math.min(W, 2576);       // default: full resolution, up to the model's limit
       const k = W / sendW, sent = sendW === W ? img : img.resize({ width: sendW, quality: 'best' }), sw = sent.getSize().width, sh = sent.getSize().height;
       const px = img.toBitmap();
-      const pieces = [], bad = [];
+      const pieces = [], bad = []; let mode = null;
       const t0 = performance.now(); let tFirst = null;
       const parser = casting.lineParser((p) => {
+        if (p && (p.mode === 'lift' || p.mode === 'point') && !p.kind) { mode = p.mode; return; }
         if (p.kind === 'none') { bad.push('none: ' + p.reason); return; }
         const reject = (err) => { bad.push(err); console.log('[cast]   rejected: ' + JSON.stringify(p).slice(0, 300)); };
         if (!p.box && p.piece) {                         // boxes-first: the content of a piece whose box came earlier
@@ -78,7 +79,7 @@ app.whenReady().then(async () => {
       if (DRY) {                                        // a pretend model whose boxes are off by up to 20 px on each edge
         const j = (size) => (rand() * 2 - 1) * Math.min(20, 0.25 * size);   // never so far that a small piece turns inside out
         for (const id of t.expect) { const q = t.pieces.find((qq) => qq.id === id), [x, y, w, h] = q.box, x0 = x + j(w), y0 = y + j(h), x1 = x + w + j(w), y1 = y + h + j(h);
-          const content = { equation: { tex: 'x' }, code: { lines: ['x'] }, text: { lines: q.lines }, table: { rows: q.rows }, figure: { about: 'x' } }[q.kind];
+          const content = { equation: { tex: 'x' }, code: { lines: ['x'] }, text: { lines: q.lines }, table: { rows: q.rows }, figure: { about: 'x' }, target: { label: 'x', role: 'button' } }[q.kind];
           parser.push(JSON.stringify({ piece: 'p' + id, kind: q.kind, box: [x0, y0, x1 - x0, y1 - y0].map((v) => v / k), ...content }) + '\n'); }
         parser.end();
       }
@@ -104,8 +105,9 @@ app.whenReady().then(async () => {
         return p ? { id, raw: near(p.box, q), snapped: near(p.snapped, q), rawEdge: edgeErr(p.box, tb(p.box)), snapEdge: edgeErr(p.snapped, tb(p.snapped)), read: DRY || readOk(p, q) } : { id, missing: true }; });
       const extra = pieces.filter((p) => !t.expect.includes(p.match) && !(t.optional || []).includes(p.match)).map((p) => p.match || 'nothing');
       const right = found.every((f) => !f.missing) && !extra.length;
-      results.push({ t, pieces, found, extra, right, bad, tFirst, total, u, cost, stop: msg.stop_reason });
-      console.log(`[cast] ${t.file}: ${right ? 'RIGHT PIECES' : 'WRONG PIECES'}` +
+      const modeOk = DRY || mode === (t.mode || 'lift');
+      results.push({ t, pieces, found, extra, right, bad, tFirst, total, u, cost, stop: msg.stop_reason, mode, modeOk });
+      console.log(`[cast] ${t.file}: ${right ? 'RIGHT PIECES' : 'WRONG PIECES'}${modeOk ? '' : ` | WRONG MODE ${mode} (wanted ${t.mode || 'lift'})`}` +
         found.map((f) => f.missing ? ` | ${f.id} missed` : ` | ${f.id} IoU ${f.raw.toFixed(2)} -> ${f.snapped.toFixed(2)} snapped (worst edge ${Math.round(f.rawEdge)} -> ${Math.round(f.snapEdge)} px)${f.read ? '' : ', READ WRONG'}`).join('') +
         (extra.length ? ` | extra: ${extra.join(', ')}` : '') + (bad.length ? ` | rejected: ${bad.join('; ')}` : ''));
       console.log(`[cast]   first piece ${tFirst == null ? '-' : (tFirst / 1000).toFixed(2) + ' s'}, done ${(total / 1000).toFixed(2)} s | tokens ${u.input_tokens} in (+${u.cache_read_input_tokens || 0} cached), ${u.output_tokens} out | $${cost.toFixed(5)}`);
@@ -113,7 +115,7 @@ app.whenReady().then(async () => {
 
     const n = results.length, ok = results.filter((r) => r.right).length, all = results.flatMap((r) => r.found.filter((f) => !f.missing));
     const avg = (xs) => xs.length ? xs.reduce((a, b) => a + b, 0) / xs.length : 0;
-    console.log(`[cast] SUMMARY right pieces on ${ok}/${n} | read completely ${all.filter((f) => f.read).length}/${all.length} | mean IoU ${avg(all.map((f) => f.raw)).toFixed(2)} raw, ${avg(all.map((f) => f.snapped)).toFixed(2)} snapped` +
+    console.log(`[cast] SUMMARY right pieces on ${ok}/${n} | right mode ${results.filter((x) => x.modeOk).length}/${n} | read completely ${all.filter((f) => f.read).length}/${all.length} | mean IoU ${avg(all.map((f) => f.raw)).toFixed(2)} raw, ${avg(all.map((f) => f.snapped)).toFixed(2)} snapped` +
       ` | mean first piece ${(avg(results.filter((r) => r.tFirst != null).map((r) => r.tFirst)) / 1000).toFixed(2)} s | spent $${spent.toFixed(4)}`);
     fs.writeFileSync(path.join(S, 'cast-report.html'), report(results, { MODEL, EFFORT: `${EFFORT}, thinking ${THINK}${BOXES_FIRST ? ', boxes first' : ''}`, SEND_W, spent }));
     fs.writeFileSync(path.join(S, 'cast-results.json'), JSON.stringify(results.map((r) => ({ file: r.t.file, right: r.right, found: r.found, extra: r.extra, rejected: r.bad,
@@ -135,7 +137,7 @@ function report(results, o) {
     const boxes = r.t.pieces.map((q) => rect(q.box, W, H, r.t.expect.includes(q.id) ? 'truth' : 'decoy', q.id)).join('') +
       r.pieces.map((p) => rect(p.box, W, H, 'raw', '') + rect(p.snapped, W, H, 'snap', '')).join('');
     const shown = (p) => p.kind === 'equation' ? p.tex + (p.terms.length ? '\nterms: ' + p.terms.map((t) => `[${t.id}] ${t.tex}`).join(', ') : '') + '\nparts: ' + p.parts.map((q) => (q.id ? `[${q.id}] ` : '') + q.tex).join('  ') : p.kind === 'table' ? p.rows.map((row) => row.join(' | ')).join('\n')
-      : p.kind === 'figure' ? 'figure: ' + (p.about || '') : p.lines.join('\n') + (p.terms && p.terms.length ? '\nterms: ' + p.terms.map((t) => `[${t.id}] ${t.text}`).join(', ') : '');
+      : p.kind === 'figure' ? 'figure: ' + (p.about || '') : p.kind === 'target' ? `target (${p.role}): ${p.label}` : p.lines.join('\n') + (p.terms && p.terms.length ? '\nterms: ' + p.terms.map((t) => `[${t.id}] ${t.text}`).join(', ') : '');
     const read = r.pieces.filter((p) => p.read).map((p) => `<pre>${esc(shown(p))}</pre>`).join('');
     return `<section><h2>${esc(r.t.file)} <em class="${r.right ? 'ok' : 'no'}">${r.right ? 'right pieces' : 'wrong pieces'}</em></h2><p class="q">“${esc(r.t.question)}”</p>
       <div class="shot"><img src="${esc(r.t.file)}">${boxes}</div>

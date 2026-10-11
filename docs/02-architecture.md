@@ -127,6 +127,15 @@ A full 1920 by 1200 screenshot costs about 2,967 image tokens, about $0.0003 on 
 
 The stage already measures where the dark pixels of a crop are (`inkBox`), so a lifted photo can be scaled to land exactly on the live text. For that to look right, Casting's LaTeX must reproduce the original closely.
 
+## Two modes: lift and point
+
+Casting's first line chooses the mode for each question.
+
+- **Lift**: the person wants to understand content. Pieces are lifted off the page, the page recedes, and the Director builds beside them.
+- **Point**: the person wants to do or find something on the screen: use an app feature, find a setting, deal with an error message, find which part of a chart answers a "which" question. Nothing moves. Casting returns targets (`kind: "target"`, with a `label` and a `role` such as button, menu, field), which become invisible `anchor` boxes on the stage. `dim` lays a light shade over the screen; `spotlight` cuts a hole in that shade around one target and glides to the next, so the spotlit control is at full brightness; `marker` pins a numbered step; `click` moves a ghost cursor to a target and shows a click. Pointing moves do not count toward the visual budget, since each spotlight replaces the last.
+
+Limit: a feature inside a closed menu is not on the screenshot, so the Director points at what opens it and says what to look for next. A guided mode that waits for the click and looks again would remove this limit.
+
 ## The director
 
 Built in `prototype/director.js`. A model call that receives the question and the pieces on stage, written as plain lines with the exact ids it may use, and returns a script.

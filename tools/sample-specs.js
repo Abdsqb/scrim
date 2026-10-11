@@ -3,12 +3,12 @@
 module.exports = [
   {
     name: '01-dijkstra-pdf', chrome: 'pdf', file: 'cs331-lecture14-shortest-paths.pdf', page: '4 / 18',
-    question: 'how does the relaxation equation fit into the algorithm?', expect: ['relax', 'alg'],
+    question: 'how does the relaxation equation fit into the algorithm?', expect: ['relax', 'alg'], optional: ['relaxtext'],
     blocks: [
       { h1: 'Lecture 14: Shortest paths' }, { meta: "CS 331 · Dijkstra's algorithm and the relaxation step" },
       { h: '14.1 Setup' }, { p: 'Every vertex starts with an estimate of its distance from the source s:' },
       { eq: String.raw`d[s] = 0, \qquad d[v] = \infty \ \text{ for all } v \neq s`, id: 'init' },
-      { h: '14.2 Relaxation' }, { p: 'For an edge from u to v with weight w(u,v), the estimate for v improves whenever going through u is shorter:' },
+      { h: '14.2 Relaxation' }, { p: 'For an edge from u to v with weight w(u,v), the estimate for v improves whenever going through u is shorter:', id: 'relaxtext' },
       { eq: String.raw`d[v] = \min\big(d[v],\ d[u] + w(u,v)\big)`, id: 'relax' },
       { h: '14.3 The algorithm' },
       { code: 'for each neighbor v of u:\n    alt = d[u] + w(u, v)\n    if alt < d[v]:\n        d[v] = alt\n        prev[v] = u', id: 'alg' },
@@ -186,6 +186,55 @@ module.exports = [
       { p: 'The income statement reports how much a company earned over a period. Expenses are subtracted from revenue step by step until only net income is left.', id: 'def' },
       { table: [['Income statement, 2026', ''], ['Revenue', '$820,000'], ['Cost of goods sold', '(410,000)'], ['Gross profit', '410,000'], ['Operating expenses', '(250,000)'], ['Income tax', '(40,000)'], ['Net income', '$120,000']], id: 'is' },
       { p: 'Amounts in brackets are subtracted.', id: 'note' },
+    ],
+  },
+  // Screens 16 to 19: using apps and reading screens in place. Casting should choose point mode and return targets.
+  {
+    name: '16-spreadsheet-app', chrome: 'app', title: 'budget.xlsx — Spreadsheet', mode: 'point',
+    question: 'how do I make a chart from this data?', expect: ['chart'], optional: ['insert', 'data'],
+    blocks: [],
+    html: `<div class="menubar"><div>File</div><div>Edit</div><div>View</div><div data-piece="insert" data-kind="target">Insert</div><div>Format</div><div>Data</div><div>Help</div></div>
+      <div class="toolbar"><div class="tb">↶</div><div class="tb">↷</div><div class="sep"></div><div class="tb"><b>B</b></div><div class="tb"><i>I</i></div><div class="tb"><u>U</u></div>
+      <div class="sep"></div><div class="tb">Σ</div><div class="tb lab" data-piece="chart" data-kind="target">▥ Chart</div><div class="tb lab">⧩ Filter</div><div class="tb lab">↕ Sort</div></div>
+      <table class="sheet"><tr><th></th><th>A</th><th>B</th><th>C</th><th>D</th><th>E</th></tr>
+      <tbody data-piece="data" data-kind="target"><tr><td class="rh">1</td><td><b>Month</b></td><td><b>Sales</b></td><td></td><td></td><td></td></tr>
+      <tr><td class="rh">2</td><td>January</td><td>1,200</td><td></td><td></td><td></td></tr><tr><td class="rh">3</td><td>February</td><td>1,450</td><td></td><td></td><td></td></tr>
+      <tr><td class="rh">4</td><td>March</td><td>1,320</td><td></td><td></td><td></td></tr><tr><td class="rh">5</td><td>April</td><td>1,780</td><td></td><td></td><td></td></tr></tbody>
+      <tr><td class="rh">6</td><td></td><td></td><td></td><td></td><td></td></tr><tr><td class="rh">7</td><td></td><td></td><td></td><td></td><td></td></tr></table>`,
+  },
+  {
+    name: '17-settings-app', chrome: 'app', title: 'Settings', mode: 'point',
+    question: 'where do I turn on dark mode?', expect: ['appearance'],
+    blocks: [],
+    html: `<div class="settings"><div class="side"><div class="on">General</div><div data-piece="appearance" data-kind="target">Appearance</div><div>Notifications</div><div>Privacy</div><div>Accounts</div><div>About</div></div>
+      <div class="panel"><h2>General</h2><div class="row-set">Start at login<div class="tog on"></div></div><div class="row-set">Check for updates automatically<div class="tog on"></div></div>
+      <div class="row-set">Send usage statistics<div class="tog"></div></div><div class="row-set">Language<div class="btn">English ▾</div></div></div></div>`,
+  },
+  {
+    name: '18-error-dialog', chrome: 'app', title: 'report.docx — Writer', mode: 'point',
+    question: 'what does this mean and what should I do?', expect: ['msg'], optional: ['saveas', 'retry', 'title'],
+    blocks: [],
+    html: `<div class="menubar"><div>File</div><div>Edit</div><div>View</div><div>Insert</div><div>Format</div></div>
+      <div style="padding:40px 120px;font:16px Georgia,serif;color:#333;line-height:1.7">Quarterly report draft. Revenue grew in every region this quarter, led by the northern stores...</div>
+      <div class="dialog-back"><div class="dialog"><h3 data-piece="title" data-kind="target">Couldn't save</h3>
+      <div data-piece="msg" data-kind="target">report.docx could not be saved because the disk is full. Free up some space, or save the file to a different location.</div>
+      <div class="btns"><div class="btn">Cancel</div><div class="btn" data-piece="retry" data-kind="target">Retry</div><div class="btn primary" data-piece="saveas" data-kind="target">Save As…</div></div></div></div>`,
+  },
+  {
+    name: '19-sales-dashboard', chrome: 'browser', tab: 'Sales dashboard', url: 'dashboard.example.com/sales/2026', course: 'Dashboard', mode: 'point',
+    nav: ['Overview', 'Sales', 'Customers', 'Inventory'],
+    question: 'which month had the highest sales?', expect: ['peak'], optional: ['chart'],
+    blocks: [
+      { meta: 'Sales › 2026' }, { h1: 'Monthly sales' },
+      { svg: `<svg width="620" height="340" viewBox="0 0 620 340" xmlns="http://www.w3.org/2000/svg" font-family="Segoe UI, sans-serif" font-size="14" data-piece="chart" data-kind="target">
+        <line x1="50" y1="20" x2="50" y2="290" stroke="#999"/><line x1="50" y1="290" x2="600" y2="290" stroke="#999"/>
+        <rect x="80" y="170" width="60" height="120" fill="#7aa7e0"/><text x="95" y="312">Jan</text>
+        <rect x="170" y="145" width="60" height="145" fill="#7aa7e0"/><text x="185" y="312">Feb</text>
+        <rect x="260" y="158" width="60" height="132" fill="#7aa7e0"/><text x="273" y="312">Mar</text>
+        <rect x="350" y="112" width="60" height="178" fill="#7aa7e0" data-piece="peak" data-kind="target"/><text x="366" y="312">Apr</text>
+        <rect x="440" y="150" width="60" height="140" fill="#7aa7e0"/><text x="455" y="312">May</text>
+        <text x="8" y="30">Sales</text></svg>` },
+      { p: 'Figures in thousands of dollars.' },
     ],
   },
 ];

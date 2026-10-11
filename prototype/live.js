@@ -81,18 +81,21 @@ app.whenReady().then(async () => {
     // Full resolution reads small symbols better (tested: nested brackets in code); 2576 px is the most the model takes on the long edge.
     const sent = PW > 2576 || PH > 2576 ? shot.resize(PW >= PH ? { width: 2576, quality: 'best' } : { height: 2576, quality: 'best' }) : shot, { width: sw, height: sh } = sent.getSize();
     const k = PW / sw, px = shot.toBitmap(), placed = [], t0 = performance.now();
+    let mode = 'lift';                                // Casting's first line: lift the pieces out, or point at places in place
     feed({ move: 'ask', text: question, pause: 0 });
     const usage = await casting.cast(client, {
       png: sent.toPNG().toString('base64'), width: sw, height: sh, question,
+      onMode: (m) => { mode = m; log(`Casting chose ${m} mode`); },
       onPiece: (p) => {
         // Model box (sent pixels) -> screen pixels -> snapped to the content -> stage (CSS) pixels.
         const s = casting.snap(px, PW, PH, p.box.map((v) => v * k), { kind: p.kind });
         const rect = { x: Math.round(s[0] / sf), y: Math.round(s[1] / sf), w: Math.round(s[2] / sf), h: Math.round(s[3] / sf) };
         const piece = 'c' + (placed.length + 1);
         placed.push({ ...p, piece, rect });
-        if (process.env.SCRIM_DEBUG) log('piece', p.kind, JSON.stringify(p.parts || p.lines || p.rows || p.about).slice(0, 400));
+        if (process.env.SCRIM_DEBUG) log('piece', p.kind, JSON.stringify(p.parts || p.lines || p.rows || p.about || p.label || '').slice(0, 400));
         if (placed.length === 1) log(`first piece ${((performance.now() - t0) / 1000).toFixed(2)} s after asking`);
-        feed({ move: 'lift', piece, rect, pause: 0 });
+        if (mode === 'point') { placed[placed.length - 1].anchored = true; feed({ move: 'anchor', piece, rect, pause: 0 }); }   // stays where it is
+        else feed({ move: 'lift', piece, rect, pause: 0 });
       },
       onReject: (why) => log('Casting refused a line:', why),
     });
@@ -104,10 +107,11 @@ app.whenReady().then(async () => {
     // Simple placement until the stage owns layout (build step 2): Casting's pieces in a column on the left, in the order Casting
     // ranked them, and the Director's canvas on the right. Heights are estimates, since nothing is measured until it is on stage.
     // Only one code block can be live, so others stay pictures.
-    feed({ move: 'recede', pause: 120 });
+    if (mode === 'point') feed({ move: 'dim', pause: 0 });
+    else feed({ move: 'recede', pause: 120 });
     const left = 56, colW = Math.round(W * 0.36), mid = left + colW / 2;
     let y = 130, codeLive = false;
-    for (const p of placed) {
+    for (const p of mode === 'point' ? [] : placed) {   // in point mode nothing moves: the Director points at the real screen
       if (p.kind === 'equation') {
         const parts = casting.equationParts(p, p.piece + '-');   // ids must be unique on the stage, so each is prefixed with its piece
         feed({ move: 'write', piece: p.piece, row: p.piece, at: { x: mid, y: y + 26 }, size: 34, parts, pause: 60 });
@@ -129,14 +133,14 @@ app.whenReady().then(async () => {
         y += p.rect.h * w / p.rect.w + 36;
       }
     }
-    const canvasX = left + colW + 80;
+    const canvasX = mode === 'point' ? Math.round(W * 0.6) : left + colW + 80;
     js(`setCanvas(${JSON.stringify({ x: canvasX, y: 140, w: W - canvasX - 60 })})`);
 
     // The Director writes the explanation; each checked move plays as soon as it arrives.
     const t1 = performance.now(); let moves = 0;
     try {
       const dUsage = await director.direct(client, {
-        question, placed,
+        question, placed, mode,
         onMove: (m) => {
           if (!moves++) log(`Director: first move ${((performance.now() - t1) / 1000).toFixed(2)} s after Casting finished`);
           if (process.env.SCRIM_DEBUG) log('move', JSON.stringify(m).slice(0, 300));
@@ -247,7 +251,7 @@ app.whenReady().then(async () => {
     if (!client) { log('FAIL --auto-ask needs ANTHROPIC_API_KEY in .env'); process.exitCode = 1; return app.quit(); }
     const r = await explain();
     const kinds = r && r.placed ? r.placed.map((p) => p.kind).sort().join(',') : '';
-    const ok = r && !r.error && r.identical && (SCREEN ? kinds.length > 0 : kinds === 'code,equation');
+    const ok = r && !r.error && r.identical && (SCREEN ? kinds.length > 0 : kinds.includes('code') && kinds.includes('equation'));   // helpful extra context is fine
     log(ok ? `PASS Casting found ${kinds}, the pieces lifted and went live, and the screen came back identical` : 'FAIL ' + JSON.stringify({ ...r, placed: kinds }));
     process.exitCode = ok ? 0 : 1; app.quit();
   }, 1200);

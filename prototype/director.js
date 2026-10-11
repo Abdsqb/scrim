@@ -7,11 +7,13 @@ const MODEL = 'claude-haiku-5-5';
 const COLORS = ['blue', 'teal', 'green', 'yellow', 'gold', 'red', 'pink'];
 
 // Kept identical for every request, so the prompt cache can reuse it.
-const system = `You are the narrator of a short animated explanation that plays over a student's own screen. The pieces of their material that their question is about are already lifted onto a dark stage, in a column on the left.
+const system = `You are the narrator of a short animated explanation that plays over someone's own screen. It runs in one of two modes, given as MODE below.
+- lift: the pieces of material the question is about are lifted onto a dark stage, in a column on the left, and you build visuals on the right.
+- point: the screen stays where it is, slightly dimmed, and the places the question is about are marked as targets on it. You explain by pointing at them.
 
 The explanation is what you say. Talk the student through it the way a good tutor would: start from what they are looking at, explain how it works in order, and build to the answer. Not a story with characters, and not a list of facts. The screen illustrates what you are saying at that moment: highlight the term as you mention it, build a diagram as you walk through the idea, draw an arrow when you connect two things. You build visuals on the right, with moves.
 
-The student has already read the material and did not get it. Repeating it or rephrasing it teaches nothing. Give them a new angle: why it works, what it means in practice, their own numbers worked through, or a picture of the idea. Tie what you show back to their material, so they see where it lives on their page.
+In lift mode the person has already read the material and did not get it. Repeating it or rephrasing it teaches nothing. Give them a new angle: why it works, what it means in practice, their own numbers worked through, or a picture of the idea. Tie what you show back to their material, so they see where it lives on their page.
 
 Reply with one move per line, each a JSON object. No other text, no code fences, no blank lines.
 
@@ -34,6 +36,12 @@ MOVES
   A line of math on your canvas, such as the relationship in symbols or a worked calculation. terms are pieces of tex copied exactly.
 {"move":"hold","ms":N}
   Pause so the student can take it in. 600 to 1500.
+{"move":"spotlight","id":ID}
+  Darken everything except one place, to draw the eye to it. The next spotlight glides to the new place. Best in point mode.
+{"move":"marker","id":ID,"n":N,"color":COLOR}
+  A numbered circle on a place: step N of the instructions.
+{"move":"click","id":ID}
+  A cursor moves to a place and clicks it: show the action as you say it.
 
 IDS
 Use only ids listed under ON STAGE, or ids you created earlier in your reply. Every new id starts with "d-" and uses only letters, digits and dashes, such as "d-assets".
@@ -51,6 +59,13 @@ Decide how hard the question really is before anything else; most questions are 
 {"move":"level","level":"easy"}
 The app holds you to these limits and drops anything beyond them, so plan within them and keep your last say for the answer.
 
+IN POINT MODE
+- Walk the person through it in the order they would do it: for each step, say it, then spotlight, marker and click the target it is about.
+- Explain what each step does or why, briefly, not only where to click.
+- If the next part is inside a menu or panel that is not open on screen, say what to look for once it opens. Do not point at places that are not targets.
+- If a message on screen is the question, say what it means in plain words, then point at what to do about it.
+- Diagrams are rarely needed in point mode.
+
 HOW TO EXPLAIN
 - Start with what you say. Each visual move goes right next to the line that talks about it, never in a batch.
 - Open on the student's material: focus the key term or number as you first mention it.
@@ -66,6 +81,10 @@ function inventory(placed) {
   const out = [], ids = new Set();
   for (const p of placed) {
     ids.add(p.piece);
+    if (p.anchored && p.kind !== 'target') {          // point mode: content left on screen can be pointed at whole, not word by word
+      const what = p.lines ? p.lines.join(' / ') : p.tex || (p.rows ? p.rows.map((row) => row.join(' | ')).join(' / ') : p.about || '');
+      out.push(`${p.piece} (${p.kind} on screen): "${what.slice(0, 400)}"`); continue;
+    }
     if (p.kind === 'text') {
       out.push(`${p.piece} (text):`, ...p.lines.map((l) => `  "${l}"`));
       if (p.terms.length) out.push('  terms: ' + p.terms.map((t) => { ids.add(`${p.piece}-${t.id}`); return `${p.piece}-${t.id} = "${t.text}"`; }).join('; '));
@@ -81,6 +100,7 @@ function inventory(placed) {
       out.push(`${p.piece} (code${p.live ? '' : ', shown as a picture'}):`);
       p.lines.forEach((l, i) => { out.push(`  ${p.live ? `ln-${i + 1}: ` : ''}${l}`); if (p.live) ids.add(`ln-${i + 1}`); });
     } else if (p.kind === 'figure') out.push(`${p.piece} (figure): ${p.about || 'a picture'}`);
+    else if (p.kind === 'target') out.push(`${p.piece} (target, ${p.role}): "${p.label}"`);
   }
   return { text: out.join('\n'), ids };
 }
@@ -91,12 +111,14 @@ const str = (v, max) => typeof v === 'string' && v.trim().length > 0 && v.length
 // How much each level may build. The model judges the level in its first line; the limits are enforced here.
 // Narration and visuals are counted apart: what crowds the screen is visuals, and the narration's last line is the answer.
 const LIMITS = { easy: { diagrams: 0, visuals: 3, says: 3 }, medium: { diagrams: 1, visuals: 7, says: 5 }, hard: { diagrams: 2, visuals: 11, says: 6 } };
-function check(m, known, budget = { level: 'medium', diagrams: 0, visuals: 0, says: 0, started: false }) {
+function check(m, known, budget = { level: 'medium', diagrams: 0, visuals: 0, says: 0, started: false, mode: 'lift' }) {
   if (m && m.move === 'level') {
     if (budget.started || !LIMITS[m.level]) return 'level must come first and be easy, medium or hard';
     budget.level = m.level; return null;
   }
-  const limit = LIMITS[budget.level], kind = m && m.move === 'say' ? 'says' : m && m.move === 'hold' ? null : 'visuals';
+  // In point mode, pointing (spotlight, marker, click) does not pile up on screen the way diagrams do, so it is not counted.
+  const pointing = budget.mode === 'point' && m && ['spotlight', 'marker', 'click'].includes(m.move);
+  const limit = LIMITS[budget.level], kind = m && m.move === 'say' ? 'says' : (m && m.move === 'hold') || pointing ? null : 'visuals';
   if (kind && budget[kind] >= limit[kind]) return `more than ${limit[kind]} ${kind === 'says' ? 'things said' : 'visual moves'} for a ${budget.level} question`;
   if (m && m.move === 'diagram' && budget.diagrams >= limit.diagrams) return `${limit.diagrams ? 'one diagram too many' : 'a diagram'} for a ${budget.level} question`;
   if (!m || typeof m.move !== 'string') return 'not a move';
@@ -109,6 +131,8 @@ function check(m, known, budget = { level: 'medium', diagrams: 0, visuals: 0, sa
     case 'note': if (!has(m.near)) return 'note near unknown id ' + m.near; if (!str(m.text, 60) || !colour(m.color)) return 'bad note'; break;
     case 'arrow': if (!has(m.from) || !has(m.to)) return `arrow between unknown ids ${m.from} -> ${m.to}`; if ((m.label !== undefined && !str(m.label, 50)) || !colour(m.color)) return 'bad arrow'; break;
     case 'hold': if (!Number.isFinite(m.ms) || m.ms < 0 || m.ms > 4000) return 'bad hold'; break;
+    case 'spotlight': case 'click': if (!has(m.id)) return `${m.move} on unknown id ${m.id}`; if (!colour(m.color)) return 'bad colour'; break;
+    case 'marker': if (!has(m.id)) return 'marker on unknown id ' + m.id; if (!Number.isInteger(m.n) || m.n < 1 || m.n > 9 || !colour(m.color)) return 'bad marker'; break;
     case 'write': {
       if (!claim(m.row)) return 'write needs a new row id';
       const eq = { kind: 'equation', tex: m.tex, terms: (m.terms || []).map((t) => ({ ...t, id: (t.id || '').replace(/^d-/, '') })) };
@@ -141,8 +165,8 @@ function check(m, known, budget = { level: 'medium', diagrams: 0, visuals: 0, sa
 }
 
 // Ask the Director. onMove gets each checked move as soon as its line arrives; onReject gets anything refused. Resolves with usage.
-async function direct(client, { question, placed, onMove, onLevel = () => {}, onReject = () => {} }) {
-  const inv = inventory(placed), known = new Set(inv.ids), budget = { level: 'medium', diagrams: 0, visuals: 0, says: 0, started: false };
+async function direct(client, { question, placed, mode = 'lift', onMove, onLevel = () => {}, onReject = () => {} }) {
+  const inv = inventory(placed), known = new Set(inv.ids), budget = { level: 'medium', diagrams: 0, visuals: 0, says: 0, started: false, mode };
   const parser = casting.lineParser((m) => {
     const err = check(m, known, budget); if (err) return onReject(err, m);
     if (m.move === 'level') onLevel(m.level); else onMove(m);   // the level is for the checker; the stage never sees it
@@ -150,7 +174,7 @@ async function direct(client, { question, placed, onMove, onLevel = () => {}, on
   const stream = client.messages.stream({
     model: MODEL, max_tokens: 8000, output_config: { effort: 'low' },
     system: [{ type: 'text', text: system, cache_control: { type: 'ephemeral' } }],
-    messages: [{ role: 'user', content: `QUESTION\n${question}\n\nON STAGE\n${inv.text}` }],
+    messages: [{ role: 'user', content: `QUESTION\n${question}\n\nMODE\n${mode}\n\nON STAGE\n${inv.text}` }],
   });
   for await (const ev of stream) if (ev.type === 'content_block_delta' && ev.delta.type === 'text_delta') parser.push(ev.delta.text);
   parser.end();

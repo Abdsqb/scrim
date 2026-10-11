@@ -19,14 +19,14 @@ app.whenReady().then(async () => {
     for (const spec of specs) {
       await win.loadFile(path.join(__dirname, 'sample-page.html'));
       const pieces = await win.webContents.executeJavaScript(`build(${JSON.stringify(spec)})`);
-      frame = null; win.webContents.invalidate();
-      await new Promise((r) => setTimeout(r, 600));
+      frame = null;                                     // off-screen painting occasionally skips a frame, so ask again a few times
+      for (let tries = 0; tries < 5 && (!frame || frame.isEmpty()); tries++) { win.webContents.invalidate(); await new Promise((r) => setTimeout(r, 600 + tries * 400)); }
       const img = frame;
       if (!img || img.isEmpty()) throw new Error(spec.name + ': no frame was painted');
       const file = spec.name + '.png';
       fs.writeFileSync(path.join(out, file), img.toPNG());
       for (const id of spec.expect) if (!pieces.find((p) => p.id === id)) throw new Error(`${spec.name}: expected piece ${id} has no box`);
-      truth.push({ file, size: img.getSize(), question: spec.question, expect: spec.expect, optional: spec.optional || [], pieces });
+      truth.push({ file, size: img.getSize(), question: spec.question, mode: spec.mode || 'lift', expect: spec.expect, optional: spec.optional || [], pieces });
       console.log('[samples]', file, JSON.stringify(img.getSize()), pieces.map((p) => `${p.id}${spec.expect.includes(p.id) ? '*' : ''}`).join(' '));
     }
     fs.writeFileSync(path.join(out, 'truth.json'), JSON.stringify(truth, null, 2));

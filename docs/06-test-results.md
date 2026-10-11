@@ -33,7 +33,19 @@ Run on 2026-10-10 on the same PC, at 100% scaling, against the sample notes page
 
 Not tested: a real PDF with a real mouse, which is what "done" means for step 1.
 
-## The Director, narration-led and proportional
+## Point mode: apps, settings, errors, charts
+
+Run on 2026-10-11. Four generic app screens were added (16 to 19): a spreadsheet ("how do I make a chart from this data?"), a settings window ("where do I turn on dark mode?", with Appearance not yet open), an error dialog ("what does this mean and what should I do?"), and a sales dashboard ("which month had the highest sales?").
+
+| Measure | Result |
+| --- | --- |
+| Mode chosen correctly, all nineteen screens | 19 of 19 |
+| Right pieces or targets, all nineteen | 17 of 19 (the misses: a helpful extra paragraph on screen 01, since marked optional, and the usual Bayes wobble) |
+| Target boxes on the app screens | Within 0 to 7 px of the truth; the Chart button and the Retry and Save As buttons exact |
+| Scenes | Settings: spotlight on Appearance, step 1, click, then what to look for once it opens. Spreadsheet: step 1 on the data, step 2 spotlight and click on Chart. Error: the message outlined and explained, then Save As spotlit. Dashboard: the April bar spotlit, one sentence |
+
+Fixed on the way: a whole message used as a target label was refused for length (now trimmed); "which month" questions went to lift mode (the prompt now names them); spotlit controls looked grey because the shot itself was dimmed (now the dimming is a shade the spotlight cuts through); step 2 of a how-to was cut by the easy budget (pointing is no longer counted).
+
 
 Run on 2026-10-11 after the owner's two principles (see "How explanations should feel" in CLAUDE.md): the narrator explains and the screen illustrates; the size of the explanation matches the difficulty.
 
