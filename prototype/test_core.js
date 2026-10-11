@@ -81,19 +81,48 @@ t('script line format is much shorter than drawing code', () => {
 
 // ---------- 3. Casting: checking what the model sends back ----------
 const casting = require('./casting');
-const eq = (parts) => ({ kind: 'equation', box: [10, 10, 200, 40], parts: parts.map((tex) => ({ tex })) });
-t('casting accepts a well-formed equation', () => assert.strictEqual(casting.validate(eq(['d[v]', '{}={}', String.raw`\min`]), 1000, 800), null));
-t('casting joins parts with a space, so \\Rightarrow then T(n) is valid', () => assert.strictEqual(casting.validate(eq(['O(1)', String.raw`\Rightarrow`, 'T(n)']), 1000, 800), null));
-t('casting turns a lone \\left( or \\right) into \\big', () => {
-  const p = eq(['d[v]', String.raw`\left(`, 'd[u]', String.raw`\right)`, String.raw`T\left(\frac{n}{2}\right)`]);
+const eq = (tex, terms = []) => ({ kind: 'equation', box: [10, 10, 200, 40], tex, terms: terms.map(([id, t]) => ({ id, tex: t })) });
+const texs = (parts) => parts.map((q) => q.tex);
+t('casting cuts an equation at its terms, keeping operator spacing', () => {
+  const p = eq(String.raw`d[v] = \min\left(d[v],\ d[u] + w(u,v)\right)`, [['lhs', 'd[v]'], ['fn', String.raw`\min`], ['alt', 'd[u] + w(u,v)']]);
   assert.strictEqual(casting.validate(p, 1000, 800), null);
-  assert.deepStrictEqual(p.parts.map((q) => q.tex), ['d[v]', String.raw`\big(`, 'd[u]', String.raw`\big)`, String.raw`T\left(\frac{n}{2}\right)`]);
+  const parts = casting.equationParts(p, 'c1-');
+  assert.deepStrictEqual(texs(parts), ['d[v]', '{}={}', String.raw`\min`, String.raw`\big(d[v],\ `, 'd[u] + w(u,v)', String.raw`\big)`]);
+  assert.deepStrictEqual(parts.filter((q) => q.id).map((q) => q.id), ['c1-lhs', 'c1-fn', 'c1-alt']);
+});
+t('casting keeps a fraction whole and tags the terms inside it', () => {
+  const p = eq(String.raw`P(A \mid B) = \frac{P(B \mid A)\,P(A)}{P(B)}`, [['post', String.raw`P(A \mid B)`], ['ev', 'P(B)']]);
+  assert.strictEqual(casting.validate(p, 1000, 800), null);
+  const parts = casting.equationParts(p, 'c1-');
+  assert.strictEqual(parts[0].id, 'c1-post');
+  assert(parts[1].tex.includes(String.raw`\frac{`) && parts[1].tex.includes(String.raw`\htmlId{c1-ev}{P(B)}`));
+  assert.deepStrictEqual(parts[1].inner, [{ id: 'c1-ev', tex: 'P(B)' }]);
+});
+t('casting drops terms that are not in the equation, unbalanced, or have unsafe ids', () => {
+  const p = eq('x + y = 1', [['ok', 'x'], ['gone', 'z'], ['half', '{x'], ['bad}{\\href', 'y']]);
+  assert.strictEqual(casting.validate(p, 1000, 800), null);
+  assert.deepStrictEqual(p.terms.map((q) => q.id), ['ok']);
+});
+t('casting accepts text, tables and figures, and keeps only terms found in the text', () => {
+  const box = [10, 10, 300, 60];
+  const text = { kind: 'text', box, lines: ["Stockholders' equity is the owners' claim."], terms: [{ id: 'eq', text: "Stockholders' equity" }, { id: 'x', text: 'not in the text' }] };
+  assert.strictEqual(casting.validate(text, 1000, 800), null);
+  assert.deepStrictEqual(text.terms.map((q) => q.id), ['eq']);
+  assert.strictEqual(casting.validate({ kind: 'table', box, rows: [['Assets', '$500'], ['Liabilities', '$300']] }, 1000, 800), null);
+  assert.strictEqual(casting.validate({ kind: 'figure', box, about: 'a leaf' }, 1000, 800), null);
+  assert(casting.validate({ kind: 'table', box, rows: [['a', 5]] }, 1000, 800));
+  assert(casting.validate({ kind: 'poem', box }, 1000, 800));
 });
 t('casting rejects bad LaTeX, links and boxes off screen', () => {
-  assert(casting.validate(eq([String.raw`\frac{a}{`]), 1000, 800));
-  assert(casting.validate(eq([String.raw`\href{javascript:alert(1)}{x}`]), 1000, 800));
-  assert(casting.validate({ ...eq(['x']), box: [990, 10, 200, 40] }, 1000, 800));
-  assert(casting.validate({ ...eq(['x']), box: [10, 10, 5, 5] }, 1000, 800));
+  assert(casting.validate(eq(String.raw`\frac{a}{`), 1000, 800));
+  assert(casting.validate(eq(String.raw`\href{javascript:alert(1)}{x}`), 1000, 800));
+  assert(casting.validate({ ...eq('x'), box: [990, 10, 200, 40] }, 1000, 800));
+  assert(casting.validate({ ...eq('x'), box: [10, 10, 5, 5] }, 1000, 800));
+});
+t('casting forgives a number written with a leading zero', () => {
+  const got = []; const p = casting.lineParser((v) => got.push(v), () => { throw new Error('refused'); });
+  p.push('{"kind":"figure","box":[430,435,1190,070],"about":"x"}\n');
+  assert.deepStrictEqual(got[0].box, [430, 435, 1190, 70]);
 });
 
 // ---------- 4. Cost model, from the published prices ----------

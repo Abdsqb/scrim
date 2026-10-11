@@ -26,7 +26,7 @@ app.whenReady().then(async () => {
       const file = spec.name + '.png';
       fs.writeFileSync(path.join(out, file), img.toPNG());
       for (const id of spec.expect) if (!pieces.find((p) => p.id === id)) throw new Error(`${spec.name}: expected piece ${id} has no box`);
-      truth.push({ file, size: img.getSize(), question: spec.question, expect: spec.expect, pieces });
+      truth.push({ file, size: img.getSize(), question: spec.question, expect: spec.expect, optional: spec.optional || [], pieces });
       console.log('[samples]', file, JSON.stringify(img.getSize()), pieces.map((p) => `${p.id}${spec.expect.includes(p.id) ? '*' : ''}`).join(' '));
     }
     fs.writeFileSync(path.join(out, 'truth.json'), JSON.stringify(truth, null, 2));

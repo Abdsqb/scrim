@@ -18,7 +18,7 @@ npm start
 Scrim runs in the background with no window. Open anything, such as a PDF of your notes.
 
 - **Ctrl+Alt+Space** freezes the screen and opens a question box. If another app already owns the hotkey, Scrim uses Alt+Shift+Space or Ctrl+Alt+X instead and prints which.
-- **Type a question and press Enter.** Casting finds the pieces it is about, they lift off the page, and each turns into live math or code. This needs an Anthropic API key in a file named `.env` in this folder: `ANTHROPIC_API_KEY=...`. The file is git-ignored.
+- **Type a question and press Enter**, about anything on screen. Casting finds the pieces it is about (equations, code, paragraphs, bullets, tables, charts, diagrams), they lift off the page, and each turns into live content. This needs an Anthropic API key in a file named `.env` in this folder: `ANTHROPIC_API_KEY=...`. The file is git-ignored.
 - Or **drag a box** around each piece yourself, then Enter. Without an API key this is the only way.
 - **Esc** puts the screen back.
 - **Ctrl+Alt+Q** quits.

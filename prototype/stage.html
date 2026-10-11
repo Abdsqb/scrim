@@ -15,6 +15,12 @@
   .code { position: absolute; font-family: "DejaVu Sans Mono", Consolas, monospace; color: #f2f2f2; white-space: pre; line-height: 1.75; }
   .code .ln { display: block; }
   .code .no { color: #6f7480; display: inline-block; width: 2.2em; }
+  .text { position: absolute; color: #eef0f4; font: 26px/1.45 "Segoe UI", "DejaVu Sans", sans-serif; }
+  .text p { margin: 0 0 .45em; }
+  table.grid { position: absolute; border-collapse: collapse; color: #eef0f4; font-family: "Segoe UI", "DejaVu Sans", sans-serif; }
+  .grid td { border-bottom: 1px solid rgba(255,255,255,.16); padding: .35em .9em; white-space: nowrap; }
+  .grid tr:first-child td { font-weight: 600; color: #fff; border-bottom-color: rgba(255,255,255,.45); }
+  .grid td.num { text-align: right; font-variant-numeric: tabular-nums; }
   .label { position: absolute; font: 600 15px "DejaVu Sans", "Segoe UI", sans-serif; transform: translateX(-50%); white-space: nowrap; opacity: 0; }
   #caption { position: absolute; left: 0; right: 0; bottom: 64px; text-align: center; font: 23px/1.4 "DejaVu Sans", "Segoe UI", sans-serif; color: #f1f1f1;
              text-shadow: 0 2px 14px rgba(0,0,0,.9); opacity: 0; }
@@ -117,7 +123,7 @@ function inkBox(rect) {
   if (x1 < 0) return { cx: rect.x + w / 2, cy: rect.y + h / 2, width: w, height: h };
   return { cx: rect.x + (x0 + x1 + 1) / 2, cy: rect.y + (y0 + y1 + 1) / 2, width: x1 - x0 + 1, height: y1 - y0 + 1 };
 }
-const stage = { pieces: {}, rows: {}, parts: {}, code: null, done: true, receded: false, shotSrc: '' };
+const stage = { pieces: {}, rows: {}, parts: {}, code: null, texts: {}, tables: {}, figures: {}, done: true, receded: false, shotSrc: '' };
 
 // ---------- the moves ----------
 const moves = {
@@ -153,6 +159,8 @@ const moves = {
     const made = parts.map((p, i) => { const s = document.createElement('span'); s.className = 'part'; if (p.id) s.id = p.id;
       katex.render(p.tex, s, KOPT); r.appendChild(s); const rec = { ...p, el: s, row, size }; if (p.id) stage.parts[p.id] = rec; return rec; });
     layer.appendChild(r); stage.rows[row] = { el: r, parts: made, size };
+    // Terms tagged inside a part with \htmlId (one side of a fraction, say) can be matched and indicated, though not swapped or moved alone.
+    for (const p of made) for (const t of p.inner || []) { const el = document.getElementById(t.id); if (el) stage.parts[t.id] = { id: t.id, tex: t.tex, el, row, size, inner: true }; }
     r.style.left = at.x + 'px'; r.style.top = at.y + 'px'; r.style.transform = anchor === 'center' ? 'translate(-50%, -50%)' : 'translate(0, -50%)';
     made.forEach(p => { if (p.hidden) p.el.style.visibility = 'hidden'; });
     if (piece && stage.pieces[piece]) {
@@ -187,6 +195,34 @@ const moves = {
       return;
     }
     await lagged(els, 420, 90, (l, t) => { l.style.opacity = t; l.style.transform = `translateX(${lerp(-14, 0, t)}px)`; });
+  },
+  // A lifted photo becomes live content `el`: the photo flies onto it and crossfades. Without a photo, `el` simply fades in.
+  async _land(piece, el) {
+    if (!piece || !stage.pieces[piece]) { await tween(420, (t) => { el.style.opacity = t; }); return; }
+    const q = document.createRange(); q.selectNodeContents(el); const b = q.getBoundingClientRect();
+    el.style.opacity = 0; const neg = await moves._dissolve(piece, { cx: b.left + b.width / 2, cy: b.top + b.height / 2, width: b.width, height: b.height });
+    await tween(420, (t) => { el.style.opacity = t; neg.style.opacity = 1 - t; }); neg.remove();
+  },
+  async text({ piece, at, width = 900, size = 26, lines, terms = [] }) {   // a passage as live text; each key term is addressable by id
+    const c = document.createElement('div'); c.className = 'text';
+    Object.assign(c.style, { left: at.x + 'px', top: at.y + 'px', width: width + 'px', fontSize: size + 'px' });
+    for (const line of lines) { const p = document.createElement('p'); p.textContent = line; c.appendChild(p); }
+    for (const t of terms) for (const p of c.children) { const s = wrapText(p, t.text); if (s) { s.id = `${piece}-${t.id}`; s.classList.add('term'); break; } }
+    layer.appendChild(c); stage.texts[piece] = c;
+    await moves._land(piece, c);
+  },
+  async table({ piece, at, size = 22, rows }) {       // a table as a live grid; cell ids are piece-r<row>c<column>, counting from 1
+    const t = document.createElement('table'); t.className = 'grid'; Object.assign(t.style, { left: at.x + 'px', top: at.y + 'px', fontSize: size + 'px' });
+    rows.forEach((r, i) => { const tr = t.insertRow(); r.forEach((cell, j) => { const td = tr.insertCell(); td.textContent = cell; td.id = `${piece}-r${i + 1}c${j + 1}`;
+      if (i > 0 && /^[\s$€£(+-]*[\d.,]+%?\)?$/.test(cell)) td.classList.add('num'); }); });
+    layer.appendChild(t); stage.tables[piece] = t;
+    await moves._land(piece, t);
+  },
+  async place({ piece, at, w }) {                     // a picture moves to a new spot and size, staying a picture
+    const p = stage.pieces[piece]; if (!p) throw new Error('place: no lifted piece ' + piece);
+    const { els: [pos, neg], rect, base } = p, s = w / rect.w;
+    neg.remove(); delete stage.pieces[piece]; stage.figures[piece] = pos;
+    await fly([pos], base, { cx: at.x + w / 2, cy: at.y + rect.h * s / 2 }, 1000, { s0: 1.06, scaleTo: s, startCy: base.cy - 8, arc: 0.1 });
   },
   async split({ row }) {                              // the terms drift apart so each can be picked up on its own
     const r = stage.rows[row]; const named = r.parts.filter(p => p.id);
@@ -260,7 +296,7 @@ const moves = {
     ]);
     stage.receded = false; $('veil').style.opacity = 0;
     layer.innerHTML = ''; ink.innerHTML = ''; $('caption').textContent = ''; $('caption').style.opacity = 0; $('ask').style.opacity = 0;
-    $('shot').style.transform = ''; $('shot').style.filter = ''; stage.pieces = {}; stage.rows = {}; stage.parts = {}; stage.code = null;
+    $('shot').style.transform = ''; $('shot').style.filter = ''; stage.pieces = {}; stage.rows = {}; stage.parts = {}; stage.code = null; stage.texts = {}; stage.tables = {}; stage.figures = {};
   },
 };
 function leadPx(tx, size) { const m = tx.textContent.match(/^ */)[0].length; const probe = document.createElement('span'); probe.textContent = '0'.repeat(10); probe.style.visibility = 'hidden'; tx.appendChild(probe); const w = probe.getBoundingClientRect().width / 10; probe.remove(); return m * w; }

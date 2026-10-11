@@ -70,6 +70,9 @@ Each move is a plain object with a `move` name. Any move may carry `pause`, the 
 | `indicate` | `id`, optional `color` | A term swells and flashes a color, then returns |
 | `ask` | `text` | The user's follow-up question appears as a chip at the top |
 | `say` | `text` | The caption changes |
+| `text` | `at {x,y}`, `width`, `size`, `lines`, optional `piece`, `terms` | A passage as live text. Each term (`{id, text}`) becomes an element with id `piece-id` |
+| `table` | `at {x,y}`, `size`, `rows`, optional `piece` | A live grid. Cell ids are `piece-r<row>c<column>`, counting from 1. Numbers are right-aligned |
+| `place` | `piece`, `at {x,y}`, `w` | A lifted figure flies to a new spot and width and stays a picture |
 | `hold` | `ms` | Nothing moves |
 | `wait` | none | Holds until the user presses Esc. Played by the app, never by the director |
 | `restore` | none | Everything fades and the page comes back |
@@ -115,7 +118,7 @@ Later: use the cursor position and the words of the question to find the pieces 
 
 ## Casting (to build)
 
-One vision model call takes the screenshot and the question, decides which pieces the question is about, and returns each one's box and structured content. Finding and reading in one call saves a round trip. Each piece is one line of the streamed reply, box first, so the first piece can lift before the rest arrive. A dragged piece is read on its own crop with the same rules.
+One vision model call takes the screenshot and the question, decides which pieces the question is about, and returns each one's box and structured content. A piece is an equation, code, a text passage, a table, or a figure. An equation comes back whole, as one LaTeX string with terms copied out of it, because models cut equations into parts badly (a fraction's numerator and denominator ended up in separate parts); `equationParts()` cuts it at the top-level terms and tags nested ones in place with `\htmlId`. Finding and reading in one call saves a round trip. Each piece is one line of the streamed reply, box first, so the first piece can lift before the rest arrive. A dragged piece is read on its own crop with the same rules.
 
 - An equation becomes a list of parts with LaTeX and ids.
 - Code becomes a list of lines.

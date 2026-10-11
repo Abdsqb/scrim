@@ -3,27 +3,40 @@
 //   npm run cast                     all screens
 //   npm run cast -- --only=01        screens whose file name starts with 01
 //   npm run cast -- --model=claude-sonnet-5-5 --effort=medium --width=1920
-//   npm run cast -- --thinking=off --format=boxes-first   speed experiments: no thinking; every box before any content
+//   npm run cast -- --thinking=off   speed experiment: no thinking (it picks decoys; see docs/06-test-results.md)
 //   npm run cast -- --dry            no API call: jitters the true boxes by up to 20 px and checks that snapping fixes them
-// Every call costs money, so a run stops after --max-calls (default 12). Needs ANTHROPIC_API_KEY in .env.
+// Every call costs money, so a run stops after --max-calls (default 20). Needs ANTHROPIC_API_KEY in .env.
 const { app, nativeImage } = require('electron');
 const fs = require('fs'), path = require('path');
 const Anthropic = require('@anthropic-ai/sdk').default;
 const casting = require('../prototype/casting');
 
 const arg = (name, def) => { const a = process.argv.find((s) => s.startsWith(`--${name}=`)); return a ? a.slice(name.length + 3) : def; };
-const THINK = arg('thinking', 'on'), BOXES_FIRST = arg('format', 'one-line') === 'boxes-first';
-const DRY = process.argv.includes('--dry'), ONLY = arg('only', ''), MODEL = arg('model', casting.MODEL), EFFORT = arg('effort', 'low'), SEND_W = Number(arg('width', 0)), MAX_CALLS = Number(arg('max-calls', 12));
+const THINK = arg('thinking', 'on'), BOXES_FIRST = false;
+const DRY = process.argv.includes('--dry'), ONLY = arg('only', ''), MODEL = arg('model', casting.MODEL), EFFORT = arg('effort', 'low'), SEND_W = Number(arg('width', 0)), MAX_CALLS = Number(arg('max-calls', 20));
 const PRICE = { 'claude-haiku-5-5': [0.10, 0.50, 0.01], 'claude-sonnet-5-5': [2, 10, 0.20], 'claude-opus-5-5': [4, 20, 0.20] };   // $ per million: in, out, cache read
 const ROOT = path.join(__dirname, '..'), S = path.join(ROOT, 'samples');
 const iou = (a, b) => { const x0 = Math.max(a[0], b[0]), y0 = Math.max(a[1], b[1]), x1 = Math.min(a[0] + a[2], b[0] + b[2]), y1 = Math.min(a[1] + a[3], b[1] + b[3]);
   const i = Math.max(0, x1 - x0) * Math.max(0, y1 - y0); return i / (a[2] * a[3] + b[2] * b[3] - i); };
 // Did Casting read the piece completely? Equations: the same brackets, commas and operators as the original, ignoring sizing
 // commands like \big and \left and spacing like \, (which is not a comma). Code: the same lines, ignoring trailing spaces.
-const symbols = (tex) => (tex.replace(/\\(big|Big|bigg|Bigg|left|right)[lr]?(?![a-zA-Z])/g, '').replace(/\\[,;:! ]/g, ' ').match(/[()\[\],=+\-<>|]/g) || []).sort().join('');
+// Structures count too, so a fraction flattened into two parts (numerator, then denominator) is caught.
+const symbols = (tex) => (tex.replace(/\\(big|Big|bigg|Bigg|left|right)[lr]?(?![a-zA-Z])/g, '').replace(/\\[,;:! ]/g, ' ')
+  .match(/\\(frac|dfrac|tfrac|sqrt|sum|prod|int)(?![a-zA-Z])|[()\[\],=+\-<>|]/g) || []).map((s) => s.replace(/^\\[dt]frac$/, '\\frac')).sort().join('');
+// Text and tables: the same words, compared letters and digits only, allowing a few characters' difference (quote styles, OCR slips).
+const letters = (s) => s.toLowerCase().replace(/[^a-z0-9]+/g, '');
+const bigrams = (s) => { const m = new Map(); for (let i = 0; i < s.length - 1; i++) { const b = s.slice(i, i + 2); m.set(b, (m.get(b) || 0) + 1); } return m; };
+function similar(a, b) {                               // Dice coefficient over letter pairs, 1 = identical
+  if (a === b) return 1; const A = bigrams(a), B = bigrams(b); let both = 0;
+  for (const [k, n] of A) both += Math.min(n, B.get(k) || 0);
+  return (2 * both) / Math.max(1, a.length - 1 + b.length - 1);
+}
 function readOk(p, q) {
   if (!p.read && p.read !== undefined) return false;
-  if (q.kind === 'equation') return !!p.parts && symbols(p.parts.map((r) => r.tex).join(' ')) === symbols(q.tex);
+  if (q.kind === 'text') return !!p.lines && similar(letters(p.lines.join(' ')), letters(q.lines.join(' '))) >= 0.95;
+  if (q.kind === 'table') return !!p.rows && similar(letters(p.rows.flat().join(' ')), letters(q.rows.flat().join(' '))) >= 0.95;
+  if (q.kind === 'figure') return true;                // figures are not read, only moved
+  if (q.kind === 'equation') return typeof p.tex === 'string' && symbols(p.tex) === symbols(q.tex);
   return !!p.lines && JSON.stringify(p.lines.map((l) => l.trimEnd())) === JSON.stringify(q.lines.map((l) => l.trimEnd()));
 }
 const edgeErr = (a, b) => Math.max(Math.abs(a[0] - b[0]), Math.abs(a[1] - b[1]), Math.abs(a[0] + a[2] - b[0] - b[2]), Math.abs(a[1] + a[3] - b[1] - b[3]));
@@ -60,17 +73,18 @@ app.whenReady().then(async () => {
         const err = BOXES_FIRST ? casting.validateBox(p, sw, sh) : casting.validate(p, sw, sh); if (err) return reject(err);
         if (tFirst == null) tFirst = performance.now() - t0;
         const box = p.box.map((v) => v * k);            // back to screen pixels
-        pieces.push({ ...p, box, snapped: casting.snap(px, W, H, box), read: !BOXES_FIRST });
+        pieces.push({ ...p, box, snapped: casting.snap(px, W, H, box, { kind: p.kind }), read: !BOXES_FIRST });
       }, (line) => bad.push('not JSON: ' + line.slice(0, 80)));
       if (DRY) {                                        // a pretend model whose boxes are off by up to 20 px on each edge
         const j = (size) => (rand() * 2 - 1) * Math.min(20, 0.25 * size);   // never so far that a small piece turns inside out
         for (const id of t.expect) { const q = t.pieces.find((qq) => qq.id === id), [x, y, w, h] = q.box, x0 = x + j(w), y0 = y + j(h), x1 = x + w + j(w), y1 = y + h + j(h);
-          parser.push(JSON.stringify(q.kind === 'equation' ? { kind: 'equation', box: [x0, y0, x1 - x0, y1 - y0].map((v) => v / k), parts: [{ tex: 'x' }] } : { kind: 'code', box: [x0, y0, x1 - x0, y1 - y0].map((v) => v / k), lines: ['x'] }) + '\n'); }
+          const content = { equation: { tex: 'x' }, code: { lines: ['x'] }, text: { lines: q.lines }, table: { rows: q.rows }, figure: { about: 'x' } }[q.kind];
+          parser.push(JSON.stringify({ piece: 'p' + id, kind: q.kind, box: [x0, y0, x1 - x0, y1 - y0].map((v) => v / k), ...content }) + '\n'); }
         parser.end();
       }
       const stream = DRY ? null : client.messages.stream({
         model: MODEL, max_tokens: 8000, output_config: { effort: EFFORT }, ...(THINK === 'off' ? { thinking: { type: 'disabled' } } : {}),
-        system: [{ type: 'text', text: casting.system(sw, sh, { boxesFirst: BOXES_FIRST }), cache_control: { type: 'ephemeral' } }],
+        system: [{ type: 'text', text: casting.system(sw, sh), cache_control: { type: 'ephemeral' } }],
         messages: [{ role: 'user', content: [
           { type: 'text', text: 'QUESTION\n' + t.question },
           { type: 'image', source: { type: 'base64', media_type: 'image/png', data: sent.toPNG().toString('base64') } },
@@ -88,7 +102,7 @@ app.whenReady().then(async () => {
       const found = t.expect.map((id) => { const p = pieces.find((pp) => pp.match === id), q = t.pieces.find((qq) => qq.id === id);
         const tb = (b) => (q.text && iou(b, q.text) > iou(b, q.box) ? q.text : q.box);   // score against whichever box the answer is closer to
         return p ? { id, raw: near(p.box, q), snapped: near(p.snapped, q), rawEdge: edgeErr(p.box, tb(p.box)), snapEdge: edgeErr(p.snapped, tb(p.snapped)), read: DRY || readOk(p, q) } : { id, missing: true }; });
-      const extra = pieces.filter((p) => !t.expect.includes(p.match)).map((p) => p.match || 'nothing');
+      const extra = pieces.filter((p) => !t.expect.includes(p.match) && !(t.optional || []).includes(p.match)).map((p) => p.match || 'nothing');
       const right = found.every((f) => !f.missing) && !extra.length;
       results.push({ t, pieces, found, extra, right, bad, tFirst, total, u, cost, stop: msg.stop_reason });
       console.log(`[cast] ${t.file}: ${right ? 'RIGHT PIECES' : 'WRONG PIECES'}` +
@@ -120,7 +134,9 @@ function report(results, o) {
   const cards = results.map((r) => { const { W, H } = { W: r.t.size.width, H: r.t.size.height };
     const boxes = r.t.pieces.map((q) => rect(q.box, W, H, r.t.expect.includes(q.id) ? 'truth' : 'decoy', q.id)).join('') +
       r.pieces.map((p) => rect(p.box, W, H, 'raw', '') + rect(p.snapped, W, H, 'snap', '')).join('');
-    const read = r.pieces.filter((p) => p.read).map((p) => `<pre>${esc(p.kind === 'equation' ? p.parts.map((q) => (q.id ? `[${q.id}] ` : '') + q.tex).join('  ') : p.lines.join('\n'))}</pre>`).join('');
+    const shown = (p) => p.kind === 'equation' ? p.tex + (p.terms.length ? '\nterms: ' + p.terms.map((t) => `[${t.id}] ${t.tex}`).join(', ') : '') + '\nparts: ' + p.parts.map((q) => (q.id ? `[${q.id}] ` : '') + q.tex).join('  ') : p.kind === 'table' ? p.rows.map((row) => row.join(' | ')).join('\n')
+      : p.kind === 'figure' ? 'figure: ' + (p.about || '') : p.lines.join('\n') + (p.terms && p.terms.length ? '\nterms: ' + p.terms.map((t) => `[${t.id}] ${t.text}`).join(', ') : '');
+    const read = r.pieces.filter((p) => p.read).map((p) => `<pre>${esc(shown(p))}</pre>`).join('');
     return `<section><h2>${esc(r.t.file)} <em class="${r.right ? 'ok' : 'no'}">${r.right ? 'right pieces' : 'wrong pieces'}</em></h2><p class="q">“${esc(r.t.question)}”</p>
       <div class="shot"><img src="${esc(r.t.file)}">${boxes}</div>
       <p>${r.found.map((f) => f.missing ? `<b>${f.id}</b> missed` : `<b>${f.id}</b> IoU ${f.raw.toFixed(2)} → ${f.snapped.toFixed(2)} snapped`).join(' · ')}${r.extra.length ? ` · extra: ${esc(r.extra.join(', '))}` : ''}${r.bad.length ? ` · rejected: ${esc(r.bad.join('; '))}` : ''}</p>

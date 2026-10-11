@@ -10,6 +10,9 @@
   #taskbar i.on { background: #4f7bd9; }
   #clock { position: absolute; right: 18px; color: #d8dbe2; font-size: 12px; text-align: right; line-height: 1.35; }
   pre { margin: 0; font: 15px/1.65 Consolas, monospace; white-space: pre; }
+  ul { margin: 8px 0; padding-left: 26px; } li { margin: 6px 0; }
+  table.tbl { border-collapse: collapse; margin: 10px 0; font-size: 0.95em; } .tbl td { border-bottom: 1px solid #d5d8de; padding: 5px 16px; } .tbl tr:first-child td { font-weight: 600; border-bottom: 2px solid #9aa0ab; }
+  .tbl td:last-child { text-align: right; } .fig { margin: 10px 0; display: inline-block; }
   .eq { text-align: center; margin: 14px 0; font-size: 20px; }
   .eq .katex-display { margin: 0; }
   p { margin: 8px 0; }
@@ -48,7 +51,7 @@
   .slides .slide { width: 1380px; height: 776px; background: #fff; padding: 52px 70px; color: #1b1f2a; position: relative; }
   .slides h1 { font-size: 40px; margin: 0 0 18px; color: #12355b; } .slides .eq { font-size: 30px; }
   .slides pre { font-size: 19px; background: #f4f6fa; padding: 16px 22px; border-radius: 6px; display: inline-block; }
-  .slides p { font-size: 22px; } .slides .foot { position: absolute; bottom: 20px; right: 34px; color: #999; font-size: 14px; }
+  .slides p, .slides li { font-size: 24px; } .slides .foot { position: absolute; bottom: 20px; right: 34px; color: #999; font-size: 14px; }
 
   /* Notebook */
   .notebook { background: #fff; }
@@ -69,7 +72,10 @@ const esc = (s) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;');
 function block(b) {
   if (b.h1) return `<h1>${b.h1}</h1>`;
   if (b.h) return `<h2>${b.h}</h2>`;
-  if (b.p) return `<p>${b.p}</p>`;
+  if (b.p) return b.id ? `<p data-piece="${b.id}" data-kind="text">${b.p}</p>` : `<p>${b.p}</p>`;
+  if (b.bullets) return `<ul>${b.bullets.map((t, i) => `<li${b.ids && b.ids[i] ? ` data-piece="${b.ids[i]}" data-kind="text"` : ''}>${t}</li>`).join('')}</ul>`;
+  if (b.table) return `<table class="tbl"${b.id ? ` data-piece="${b.id}" data-kind="table"` : ''}>${b.table.map((row) => `<tr>${row.map((c) => `<td>${c}</td>`).join('')}</tr>`).join('')}</table>`;
+  if (b.svg) return `<div class="fig"${b.id ? ` data-piece="${b.id}" data-kind="figure"` : ''}>${b.svg}</div>`;
   if (b.meta) return `<p class="meta">${b.meta}</p>`;
   if (b.eq) return `<div class="eq" data-piece="${b.id || ''}" data-tex="${encodeURIComponent(b.eq)}"></div>`;
   if (b.code) return `<pre data-piece="${b.id || ''}">${esc(b.code)}</pre>`;
@@ -93,10 +99,14 @@ window.build = (spec) => {
     if (!rs.length) throw new Error('no visible glyphs in piece ' + e.dataset.piece);
     const x0 = Math.min(...rs.map((q) => q.left)), y0 = Math.min(...rs.map((q) => q.top)), x1 = Math.max(...rs.map((q) => q.right)), y1 = Math.max(...rs.map((q) => q.bottom));
     const r = { x: x0, y: y0, width: x1 - x0, height: y1 - y0 }, k = devicePixelRatio, px = (q) => [q.x, q.y, q.width, q.height].map((v) => Math.round(v * k));
-    const piece = { id: e.dataset.piece, kind: e.matches('.eq') ? 'equation' : 'code', box: px(r) };
+    const kind = e.dataset.kind || (e.matches('.eq') ? 'equation' : 'code');
+    const piece = { id: e.dataset.piece, kind, box: px(r) };
     // A code panel can be much wider than its text (a notebook cell spans the page). Boxing just the text is as good an answer.
     if (piece.kind === 'code') { const q = document.createRange(); q.selectNodeContents(e); piece.text = px(q.getBoundingClientRect()); piece.lines = e.textContent.split('\n'); }
-    else piece.tex = decodeURIComponent(e.dataset.tex);
+    else if (kind === 'equation') piece.tex = decodeURIComponent(e.dataset.tex);
+    // Text: the box is the words themselves, not the block around them; Casting reads each paragraph or bullet as one line.
+    else if (kind === 'text') { const q = document.createRange(); q.selectNodeContents(e); piece.box = px(q.getBoundingClientRect()); piece.lines = [e.textContent]; }
+    else if (kind === 'table') piece.rows = [...e.rows].map((tr) => [...tr.cells].map((td) => td.textContent));
     return piece;
   }));
 };

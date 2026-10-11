@@ -38,12 +38,12 @@ module.exports = [
   {
     name: '04-bayes-browser', chrome: 'browser', tab: 'Module 5: Conditional probability', url: 'courses.example.edu/stat200/module5/bayes', course: 'STAT 200',
     nav: ['1. Counting', '2. Probability rules', '3. Random variables', '4. Expectation', '5. Conditional probability', '6. Distributions'],
-    question: "what does each part of Bayes' theorem mean?", expect: ['bayes'],
+    question: "what does each part of Bayes' theorem mean?", expect: ['bayes'], optional: ['intro'],
     blocks: [
       { meta: 'Modules › 5. Conditional probability' }, { h1: "5.3 Bayes' theorem" },
       { p: 'If B can happen in several disjoint ways, the law of total probability says' },
       { eq: String.raw`P(B) = \sum_{i} P(B \mid A_i)\,P(A_i)`, id: 'total' },
-      { p: "Bayes' theorem turns a conditional probability around:" },
+      { p: "Bayes' theorem turns a conditional probability around:", id: 'intro' },
       { eq: String.raw`P(A \mid B) = \frac{P(B \mid A)\,P(A)}{P(B)}`, id: 'bayes' },
       { h: 'Example' }, { p: 'A test is 95% accurate and 1% of people have the condition. What is the chance that someone who tests positive has it? Work it out before reading on.' },
     ],
@@ -112,6 +112,80 @@ module.exports = [
       { p: 'Quicksort picks a pivot, moves smaller elements to its left and larger ones to its right, then sorts each side.' },
       { code: 'def partition(a, lo, hi):\n    pivot = a[hi]\n    i = lo\n    for j in range(lo, hi):\n        if a[j] < pivot:\n            a[i], a[j] = a[j], a[i]\n            i += 1\n    a[i], a[hi] = a[hi], a[i]\n    return i', id: 'partition' },
       { p: 'On average the running time is' }, { eq: String.raw`T(n) = O(n \log n)`, id: 'avg' },
+    ],
+  },
+  // Screens 11 to 15: text, tables and figures. `optional` pieces may be picked or not without counting as wrong.
+  {
+    name: '11-balance-sheet-slides', chrome: 'slides', file: 'ACCT 101 - Chapter 1.pptx', foot: 'ACCT 101 · Slide 20',
+    question: "I don't understand stockholders' equity", expect: ['equity'], optional: ['bs'],
+    blocks: [
+      { h1: 'The balance sheet: what it tells you' },
+      { bullets: [
+        'Assets are the resources a company owns or controls, such as cash, inventory and equipment.',
+        'Liabilities are what the company owes to others, such as bank loans and unpaid supplier bills.',
+        "Stockholders' equity is the owners' claim on the assets: whatever would remain if every liability were paid off. Creditors are paid before owners, so equity acts as a cushion for them.",
+      ], ids: ['assets', 'liab', 'equity'] },
+      { table: [['', 'Year end'], ['Total assets', '$500,000'], ['Total liabilities', '$300,000'], ["Stockholders' equity", '$200,000']], id: 'bs' },
+    ],
+  },
+  {
+    name: '12-photosynthesis-pdf', chrome: 'pdf', file: 'bio110-ch3-energy.pdf', page: '6 / 22',
+    question: 'what is this diagram showing?', expect: ['leaf'],
+    blocks: [
+      { h1: '3.1 Photosynthesis' },
+      { p: 'Plants capture light energy and store it as sugar. The overall reaction takes in carbon dioxide and water and gives off oxygen:', id: 'intro' },
+      { eq: String.raw`6\,\mathrm{CO_2} + 6\,\mathrm{H_2O} \xrightarrow{\text{light}} \mathrm{C_6H_{12}O_6} + 6\,\mathrm{O_2}`, id: 'rxn' },
+      { svg: `<svg width="560" height="300" viewBox="0 0 560 300" xmlns="http://www.w3.org/2000/svg" font-family="Georgia, serif" font-size="16">
+        <defs><marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0 L10 5 L0 10 z" fill="#333"/></marker></defs>
+        <rect width="560" height="300" fill="#f6faf2" stroke="#cdd8c4"/>
+        <path d="M150 230 C 190 90, 350 70, 420 115 C 380 205, 250 255, 150 230 Z" fill="#8cc06b" stroke="#4d7a35" stroke-width="2"/>
+        <path d="M150 230 L 420 115" stroke="#4d7a35" stroke-width="2"/>
+        <line x1="95" y1="45" x2="225" y2="135" stroke="#d9a400" stroke-width="3" marker-end="url(#ar)"/><text x="40" y="38">sunlight</text>
+        <line x1="40" y1="175" x2="165" y2="175" stroke="#333" stroke-width="2" marker-end="url(#ar)"/><text x="30" y="165">CO₂ in</text>
+        <line x1="350" y1="175" x2="480" y2="235" stroke="#333" stroke-width="2" marker-end="url(#ar)"/><text x="455" y="260">O₂ out</text>
+        <line x1="215" y1="292" x2="230" y2="225" stroke="#2d6fb3" stroke-width="2" marker-end="url(#ar)"/><text x="235" y="290">water from roots</text>
+        <text x="330" y="90">sugar made in the leaf</text></svg>`, id: 'leaf' },
+    ],
+  },
+  {
+    name: '13-supply-demand-browser', chrome: 'browser', tab: 'Week 2: Markets', url: 'courses.example.edu/econ101/week2/equilibrium', course: 'ECON 101',
+    nav: ['1. Scarcity and choice', '2. Supply and demand', '3. Elasticity', '4. Consumer choice'],
+    question: 'why does the price end up where the two lines cross?', expect: ['chart'], optional: ['def'],
+    blocks: [
+      { meta: 'Modules › 2. Supply and demand' }, { h1: '2.4 Market equilibrium' },
+      { p: 'The equilibrium price is the price at which the quantity buyers want equals the quantity sellers offer. Above it there is a surplus; below it, a shortage.', id: 'def' },
+      { svg: `<svg width="480" height="330" viewBox="0 0 480 330" xmlns="http://www.w3.org/2000/svg" font-family="Segoe UI, sans-serif" font-size="15">
+        <line x1="60" y1="20" x2="60" y2="290" stroke="#222" stroke-width="2"/><line x1="60" y1="290" x2="450" y2="290" stroke="#222" stroke-width="2"/>
+        <text x="8" y="30">Price</text><text x="380" y="315">Quantity</text>
+        <line x1="80" y1="40" x2="420" y2="270" stroke="#2d6fb3" stroke-width="3"/><text x="425" y="270" fill="#2d6fb3">D</text>
+        <line x1="80" y1="270" x2="420" y2="40" stroke="#c0392b" stroke-width="3"/><text x="425" y="45" fill="#c0392b">S</text>
+        <line x1="60" y1="155" x2="250" y2="155" stroke="#888" stroke-dasharray="5 4"/><line x1="250" y1="155" x2="250" y2="290" stroke="#888" stroke-dasharray="5 4"/>
+        <circle cx="250" cy="155" r="6" fill="#222"/><text x="260" y="148">E</text><text x="30" y="160">P*</text><text x="242" y="310">Q*</text></svg>`, id: 'chart' },
+      { h: 'Elasticity, briefly' },
+      { p: 'Elasticity measures how strongly the quantity demanded responds to a change in price. It is the subject of next week.', id: 'elastic' },
+    ],
+  },
+  {
+    name: '14-mitosis-pdf', chrome: 'pdf', file: 'bio110-ch5-cell-division.pdf', page: '3 / 15',
+    question: 'what happens during anaphase?', expect: ['anaphase'],
+    blocks: [
+      { h1: '5.2 The phases of mitosis' }, { meta: 'BIO 110 · Lecture 9' },
+      { p: 'In prophase, the chromosomes condense and become visible, and the spindle begins to form.', id: 'prophase' },
+      { p: 'In metaphase, the chromosomes line up along the middle of the cell, attached to spindle fibres from both poles.', id: 'metaphase' },
+      { p: 'In anaphase, the sister chromatids are pulled apart and move to opposite ends of the cell.', id: 'anaphase' },
+      { p: 'In telophase, a nuclear envelope forms around each set of chromosomes and the cell begins to divide in two.', id: 'telophase' },
+      { p: 'Cytokinesis, the splitting of the cytoplasm, usually overlaps with telophase.' },
+    ],
+  },
+  {
+    name: '15-income-statement-browser', chrome: 'browser', tab: 'Chapter 2: Income statement', url: 'courses.example.edu/acct101/ch2/income-statement', course: 'ACCT 101',
+    nav: ['1. The balance sheet', '2. The income statement', '3. Cash flows', '4. Adjusting entries'],
+    question: 'how is net income calculated in this table?', expect: ['is'], optional: ['def', 'note'],
+    blocks: [
+      { meta: 'Modules › 2. The income statement' }, { h1: '2.1 Reading an income statement' },
+      { p: 'The income statement reports how much a company earned over a period. Expenses are subtracted from revenue step by step until only net income is left.', id: 'def' },
+      { table: [['Income statement, 2026', ''], ['Revenue', '$820,000'], ['Cost of goods sold', '(410,000)'], ['Gross profit', '410,000'], ['Operating expenses', '(250,000)'], ['Income tax', '(40,000)'], ['Net income', '$120,000']], id: 'is' },
+      { p: 'Amounts in brackets are subtracted.', id: 'note' },
     ],
   },
 ];

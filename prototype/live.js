@@ -19,6 +19,8 @@ const AUTO = has('--auto'), ABORT = has('--abort'), AUTO_SELECT = has('--auto-se
 const ESC_EARLY = has('--esc-while-selecting');   // with --auto-select: press Esc before Enter, with two pieces already lifted
 const askArg = process.argv.find((a) => a.startsWith('--auto-ask'));
 const AUTO_ASK = askArg ? (askArg.split('=')[1] || 'how does this equation fit into this algorithm?') : null;
+// --screen=samples/11-balance-sheet-slides.png shows that picture full screen instead of the sample notes, for --auto-ask and --demo.
+const SCREEN = (process.argv.find((a) => a.startsWith('--screen=')) || '').slice(9);
 const HOTKEYS = ['Control+Alt+Space', 'Alt+Shift+Space', 'Control+Alt+X'];   // first one that is free wins
 const log = (...a) => console.log('[live]', ...a);
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -39,7 +41,12 @@ app.whenReady().then(async () => {
   let notes = null;
   if (DEMO || AUTO_SELECT || AUTO_ASK) {
     notes = cover(new BrowserWindow({ x, y, width: W, height: H, frame: false, backgroundColor: '#fbfaf6' }), display.bounds);
-    await notes.loadFile(path.join(__dirname, 'notes.html'));
+    if (SCREEN) {                                   // a file page may show a local picture; a data: page may not
+      const page = path.join(app.getPath('temp'), 'scrim-screen.html');
+      require('fs').writeFileSync(page, `<body style="margin:0;overflow:hidden"><img src="${require('url').pathToFileURL(path.resolve(SCREEN))}" style="width:100vw;height:100vh;display:block">`);
+      await notes.loadFile(page); await sleep(300);
+    }
+    else await notes.loadFile(path.join(__dirname, 'notes.html'));
   }
 
   // The stage is created hidden at start-up so that showing it later is instant.
@@ -77,11 +84,11 @@ app.whenReady().then(async () => {
       png: sent.toPNG().toString('base64'), width: sw, height: sh, question,
       onPiece: (p) => {
         // Model box (sent pixels) -> screen pixels -> snapped to the content -> stage (CSS) pixels.
-        const s = casting.snap(px, PW, PH, p.box.map((v) => v * k));
+        const s = casting.snap(px, PW, PH, p.box.map((v) => v * k), { kind: p.kind });
         const rect = { x: Math.round(s[0] / sf), y: Math.round(s[1] / sf), w: Math.round(s[2] / sf), h: Math.round(s[3] / sf) };
         const piece = 'c' + (placed.length + 1);
         placed.push({ ...p, piece, rect });
-        if (process.env.SCRIM_DEBUG) log('piece', JSON.stringify(p.parts || p.lines));
+        if (process.env.SCRIM_DEBUG) log('piece', p.kind, JSON.stringify(p.parts || p.lines || p.rows || p.about).slice(0, 400));
         if (placed.length === 1) log(`first piece ${((performance.now() - t0) / 1000).toFixed(2)} s after asking`);
         feed({ move: 'lift', piece, rect, pause: 0 });
       },
@@ -92,16 +99,35 @@ app.whenReady().then(async () => {
       feed({ move: 'say', text: "I couldn't find that on your screen. Press Esc, then drag a box around it." });
       return placed;
     }
-    // Simple placement until the stage owns layout (build step 2): equations stacked at the top, the first code block below them.
+    // Simple placement until the stage owns layout (build step 2): one centred column, in the order Casting ranked the pieces.
+    // Heights are estimates, since nothing is measured until it is on stage. Only one code block can be live, so others stay pictures.
     feed({ move: 'recede', pause: 120 });
-    const cx = Math.round(W / 2), eqs = placed.filter((p) => p.kind === 'equation'), code = placed.find((p) => p.kind === 'code');
-    eqs.forEach((p, i) => {
-      const seen = new Set();                         // part ids must be unique on the stage: prefix with the piece, drop repeats
-      const parts = p.parts.map((q) => { const id = q.id && !seen.has(q.id) ? (seen.add(q.id), `${p.piece}-${q.id}`) : null; return id ? { tex: q.tex, id } : { tex: q.tex }; });
-      feed({ move: 'write', piece: p.piece, row: p.piece, at: { x: cx, y: 150 + i * 100 }, size: eqs.length > 1 ? 40 : 46, parts, pause: 60 });
-    });
-    if (code) feed({ move: 'code', piece: code.piece, at: { x: Math.max(40, cx - 420), y: eqs.length ? 150 + eqs.length * 100 + 40 : 160 }, size: 22, lines: code.lines });
-    const names = [...new Set(placed.map((p) => (p.kind === 'code' ? 'the code' : 'the equation')))];
+    const cx = Math.round(W / 2), colW = Math.min(1000, W - 160), left = Math.round((W - colW) / 2);
+    let y = 130, codeLive = false;
+    for (const p of placed) {
+      if (p.kind === 'equation') {
+        const parts = casting.equationParts(p, p.piece + '-');   // ids must be unique on the stage, so each is prefixed with its piece
+        feed({ move: 'write', piece: p.piece, row: p.piece, at: { x: cx, y: y + 30 }, size: 40, parts, pause: 60 });
+        y += 100;
+      } else if (p.kind === 'code' && !codeLive) {
+        codeLive = true;
+        feed({ move: 'code', piece: p.piece, at: { x: left, y }, size: 22, lines: p.lines });
+        y += p.lines.length * 22 * 1.75 + 40;
+      } else if (p.kind === 'text') {
+        const size = 26, perLine = Math.floor(colW / (size * 0.5));
+        feed({ move: 'text', piece: p.piece, at: { x: left, y }, width: colW, size, lines: p.lines, terms: p.terms });
+        y += p.lines.reduce((n, l) => n + Math.max(1, Math.ceil(l.length / perLine)), 0) * size * 1.45 + p.lines.length * size * 0.45 + 40;
+      } else if (p.kind === 'table') {
+        feed({ move: 'table', piece: p.piece, at: { x: left, y }, size: 22, rows: p.rows });
+        y += p.rows.length * 22 * 1.95 + 40;
+      } else {                                        // a figure, or a second code block: it stays a picture
+        const w = Math.round(Math.min(colW, p.rect.w * 1.25, p.rect.w * 380 / p.rect.h));
+        feed({ move: 'place', piece: p.piece, at: { x: cx - w / 2, y }, w });
+        y += p.rect.h * w / p.rect.w + 40;
+      }
+    }
+    const name = { equation: 'the equation', code: 'the code', text: 'the passage', table: 'the table', figure: 'the figure' };
+    const names = [...new Set(placed.map((p) => name[p.kind]))];
     feed({ move: 'say', text: `Found ${names.join(' and ')}. The explanation comes next, with the Director. Esc to go back.` });
     return placed;
   }
@@ -201,8 +227,8 @@ app.whenReady().then(async () => {
     if (!client) { log('FAIL --auto-ask needs ANTHROPIC_API_KEY in .env'); process.exitCode = 1; return app.quit(); }
     const r = await explain();
     const kinds = r && r.placed ? r.placed.map((p) => p.kind).sort().join(',') : '';
-    const ok = r && !r.error && r.identical && kinds === 'code,equation';
-    log(ok ? 'PASS Casting found the equation and the code, they lifted and went live, and the screen came back identical' : 'FAIL ' + JSON.stringify({ ...r, placed: kinds }));
+    const ok = r && !r.error && r.identical && (SCREEN ? kinds.length > 0 : kinds === 'code,equation');
+    log(ok ? `PASS Casting found ${kinds}, the pieces lifted and went live, and the screen came back identical` : 'FAIL ' + JSON.stringify({ ...r, placed: kinds }));
     process.exitCode = ok ? 0 : 1; app.quit();
   }, 1200);
 });

@@ -33,7 +33,23 @@ Run on 2026-10-10 on the same PC, at 100% scaling, against the sample notes page
 
 Not tested: a real PDF with a real mouse, which is what "done" means for step 1.
 
-## Casting (step 4)
+## Casting on any content
+
+Run on 2026-10-10. The sample screens grew to fifteen: screens 11 to 15 add text, tables and figures (a balance-sheet slide asking about stockholders' equity, a photosynthesis diagram, a supply-and-demand chart, four similar paragraphs on mitosis, an income statement). Some pieces are marked optional: helpful context that may be picked or not.
+
+| Measure | Result |
+| --- | --- |
+| Right pieces, all fifteen screens | 14 of 15 on each of the last two runs. The miss is the Bayes screen, where the model sometimes also picks the law of total probability beside it |
+| Read completely (equations by structure, text and tables by wording, code exactly) | 22 of 22 and 23 of 23 |
+| Time to the first piece | Mean 1.1 s |
+| In the app, `--screen=samples/11-...png` asking "I don't understand stockholders' equity" | Picked the equity bullet and the balance-sheet table; first piece lifted 1.1 s after asking; both went live |
+
+What changed to get there:
+- Casting knows five kinds: equation, code, text, table, figure. Before, a slide of bullet points had nothing it could pick, which is what the owner hit on a real accounting slide.
+- Equations come back whole with terms copied out of them, and code cuts them into parts. Asked to cut equations itself, the model kept flattening fractions (numerator and denominator in separate parts) and splitting braces. The reading check now counts fractions, roots, sums and integrals so this is caught.
+- Snapping treats lines of text like code lines and leaves tables and figures as the model boxed them, since their gaps are deliberate.
+- A number written as `070` no longer loses the whole piece.
+
 
 Run on 2026-10-10 against the ten made-up screens from `npm run samples` (PDF viewer, course site, slides, notebook, each with decoy equations or code), using `npm run cast`.
 
