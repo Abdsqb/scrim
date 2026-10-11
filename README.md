@@ -17,9 +17,9 @@ npm start
 
 Scrim runs in the background with no window. Open anything, such as a PDF of your notes.
 
-- **Ctrl+Alt+Space** freezes the screen. If another app already owns it, Scrim uses Alt+Shift+Space or Ctrl+Alt+X instead and prints which.
-- **Drag a box** around each piece you are asking about. It lifts off the page. Up to four.
-- **Enter** (or the hotkey again) when done. The page recedes behind the pieces.
+- **Ctrl+Alt+Space** freezes the screen and opens a question box. If another app already owns the hotkey, Scrim uses Alt+Shift+Space or Ctrl+Alt+X instead and prints which.
+- **Type a question and press Enter.** Casting finds the pieces it is about, they lift off the page, and each turns into live math or code. This needs an Anthropic API key in a file named `.env` in this folder: `ANTHROPIC_API_KEY=...`. The file is git-ignored.
+- Or **drag a box** around each piece yourself, then Enter. Without an API key this is the only way.
 - **Esc** puts the screen back.
 - **Ctrl+Alt+Q** quits.
 
@@ -35,7 +35,7 @@ npm run record       # save every frame of the demo scene to prototype/frames/
 
 ## What is real and what is not
 
-The motion and the selection are real. The intelligence is not there yet: after you select pieces nothing explains them, and the full scene in `npm run demo` is a hand-written script in `prototype/demo-script.js`. No AI model is called.
+The motion, the selection and Casting (finding and reading the pieces) are real. The explanation is not there yet: once the pieces are live nothing explains them, and the full scene in `npm run demo` is a hand-written script in `prototype/demo-script.js`.
 
 It runs on Windows at 100% scaling. Higher scaling and a second monitor are not checked yet.
 
@@ -45,7 +45,8 @@ It runs on Windows at 100% scaling. Higher scaling and a second monitor are not 
 CLAUDE.md          project brief for Claude Code
 docs/              product, architecture, motion style, services, build plan, test results
 prototype/
-  live.js          Electron main process: hotkey, capture, selection, overlay, play
+  live.js          Electron main process: hotkey, capture, question, Casting, selection, overlay, play
+  casting.js       Casting: the prompt, streaming the reply, checking it, snapping boxes
   record.js        same scene on a stepped clock, saved frame by frame
   stage.html       the stage: clock, tweens and every move
   demo-script.js   the hand-written scene

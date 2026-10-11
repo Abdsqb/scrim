@@ -95,7 +95,8 @@ window.build = (spec) => {
     const r = { x: x0, y: y0, width: x1 - x0, height: y1 - y0 }, k = devicePixelRatio, px = (q) => [q.x, q.y, q.width, q.height].map((v) => Math.round(v * k));
     const piece = { id: e.dataset.piece, kind: e.matches('.eq') ? 'equation' : 'code', box: px(r) };
     // A code panel can be much wider than its text (a notebook cell spans the page). Boxing just the text is as good an answer.
-    if (piece.kind === 'code') { const q = document.createRange(); q.selectNodeContents(e); piece.text = px(q.getBoundingClientRect()); }
+    if (piece.kind === 'code') { const q = document.createRange(); q.selectNodeContents(e); piece.text = px(q.getBoundingClientRect()); piece.lines = e.textContent.split('\n'); }
+    else piece.tex = decodeURIComponent(e.dataset.tex);
     return piece;
   }));
 };

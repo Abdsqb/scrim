@@ -13,11 +13,19 @@ const casting = require('../prototype/casting');
 
 const arg = (name, def) => { const a = process.argv.find((s) => s.startsWith(`--${name}=`)); return a ? a.slice(name.length + 3) : def; };
 const THINK = arg('thinking', 'on'), BOXES_FIRST = arg('format', 'one-line') === 'boxes-first';
-const DRY = process.argv.includes('--dry'), ONLY = arg('only', ''), MODEL = arg('model', casting.MODEL), EFFORT = arg('effort', 'low'), SEND_W = Number(arg('width', 1568)), MAX_CALLS = Number(arg('max-calls', 12));
+const DRY = process.argv.includes('--dry'), ONLY = arg('only', ''), MODEL = arg('model', casting.MODEL), EFFORT = arg('effort', 'low'), SEND_W = Number(arg('width', 0)), MAX_CALLS = Number(arg('max-calls', 12));
 const PRICE = { 'claude-haiku-5-5': [0.10, 0.50, 0.01], 'claude-sonnet-5-5': [2, 10, 0.20], 'claude-opus-5-5': [4, 20, 0.20] };   // $ per million: in, out, cache read
 const ROOT = path.join(__dirname, '..'), S = path.join(ROOT, 'samples');
 const iou = (a, b) => { const x0 = Math.max(a[0], b[0]), y0 = Math.max(a[1], b[1]), x1 = Math.min(a[0] + a[2], b[0] + b[2]), y1 = Math.min(a[1] + a[3], b[1] + b[3]);
   const i = Math.max(0, x1 - x0) * Math.max(0, y1 - y0); return i / (a[2] * a[3] + b[2] * b[3] - i); };
+// Did Casting read the piece completely? Equations: the same brackets, commas and operators as the original, ignoring sizing
+// commands like \big and \left and spacing like \, (which is not a comma). Code: the same lines, ignoring trailing spaces.
+const symbols = (tex) => (tex.replace(/\\(big|Big|bigg|Bigg|left|right)[lr]?(?![a-zA-Z])/g, '').replace(/\\[,;:! ]/g, ' ').match(/[()\[\],=+\-<>|]/g) || []).sort().join('');
+function readOk(p, q) {
+  if (!p.read && p.read !== undefined) return false;
+  if (q.kind === 'equation') return !!p.parts && symbols(p.parts.map((r) => r.tex).join(' ')) === symbols(q.tex);
+  return !!p.lines && JSON.stringify(p.lines.map((l) => l.trimEnd())) === JSON.stringify(q.lines.map((l) => l.trimEnd()));
+}
 const edgeErr = (a, b) => Math.max(Math.abs(a[0] - b[0]), Math.abs(a[1] - b[1]), Math.abs(a[0] + a[2] - b[0] - b[2]), Math.abs(a[1] + a[3] - b[1] - b[3]));
 
 let seed = 7;                                         // the dry run's jitter repeats from run to run, so changes to snap() compare fairly
@@ -31,12 +39,13 @@ app.whenReady().then(async () => {
     if (!truth.length) throw new Error(`no sample matches --only=${ONLY}. Run npm run samples first.`);
     if (truth.length > MAX_CALLS) throw new Error(`${truth.length} screens but --max-calls=${MAX_CALLS}`);
     const price = PRICE[MODEL] || PRICE['claude-haiku-5-5'];
-    console.log(DRY ? `[cast] ${truth.length} screen(s), dry run: no API calls` : `[cast] ${truth.length} screen(s), ${MODEL}, effort ${EFFORT}, thinking ${THINK}, ${BOXES_FIRST ? 'boxes first' : 'one line per piece'}, sent at ${SEND_W} px wide`);
+    console.log(DRY ? `[cast] ${truth.length} screen(s), dry run: no API calls` : `[cast] ${truth.length} screen(s), ${MODEL}, effort ${EFFORT}, thinking ${THINK}, ${BOXES_FIRST ? 'boxes first' : 'one line per piece'}, sent at ${SEND_W || 'full'} px wide`);
     const results = [];
     let spent = 0;
     for (const t of truth) {
       const img = nativeImage.createFromPath(path.join(S, t.file)), { width: W, height: H } = img.getSize();
-      const k = W / SEND_W, sent = img.resize({ width: SEND_W, quality: 'best' }), sw = sent.getSize().width, sh = sent.getSize().height;
+      const sendW = SEND_W || Math.min(W, 2576);       // default: full resolution, up to the model's limit
+      const k = W / sendW, sent = sendW === W ? img : img.resize({ width: sendW, quality: 'best' }), sw = sent.getSize().width, sh = sent.getSize().height;
       const px = img.toBitmap();
       const pieces = [], bad = [];
       const t0 = performance.now(); let tFirst = null;
@@ -78,19 +87,19 @@ app.whenReady().then(async () => {
       for (const p of pieces) { let best = null; for (const q of t.pieces) { const v = near(p.box, q); if (!best || v > best.v) best = { q, v }; } p.match = best && best.v > 0.1 ? best.q.id : null; }
       const found = t.expect.map((id) => { const p = pieces.find((pp) => pp.match === id), q = t.pieces.find((qq) => qq.id === id);
         const tb = (b) => (q.text && iou(b, q.text) > iou(b, q.box) ? q.text : q.box);   // score against whichever box the answer is closer to
-        return p ? { id, raw: near(p.box, q), snapped: near(p.snapped, q), rawEdge: edgeErr(p.box, tb(p.box)), snapEdge: edgeErr(p.snapped, tb(p.snapped)) } : { id, missing: true }; });
+        return p ? { id, raw: near(p.box, q), snapped: near(p.snapped, q), rawEdge: edgeErr(p.box, tb(p.box)), snapEdge: edgeErr(p.snapped, tb(p.snapped)), read: DRY || readOk(p, q) } : { id, missing: true }; });
       const extra = pieces.filter((p) => !t.expect.includes(p.match)).map((p) => p.match || 'nothing');
       const right = found.every((f) => !f.missing) && !extra.length;
       results.push({ t, pieces, found, extra, right, bad, tFirst, total, u, cost, stop: msg.stop_reason });
       console.log(`[cast] ${t.file}: ${right ? 'RIGHT PIECES' : 'WRONG PIECES'}` +
-        found.map((f) => f.missing ? ` | ${f.id} missed` : ` | ${f.id} IoU ${f.raw.toFixed(2)} -> ${f.snapped.toFixed(2)} snapped (worst edge ${Math.round(f.rawEdge)} -> ${Math.round(f.snapEdge)} px)`).join('') +
+        found.map((f) => f.missing ? ` | ${f.id} missed` : ` | ${f.id} IoU ${f.raw.toFixed(2)} -> ${f.snapped.toFixed(2)} snapped (worst edge ${Math.round(f.rawEdge)} -> ${Math.round(f.snapEdge)} px)${f.read ? '' : ', READ WRONG'}`).join('') +
         (extra.length ? ` | extra: ${extra.join(', ')}` : '') + (bad.length ? ` | rejected: ${bad.join('; ')}` : ''));
       console.log(`[cast]   first piece ${tFirst == null ? '-' : (tFirst / 1000).toFixed(2) + ' s'}, done ${(total / 1000).toFixed(2)} s | tokens ${u.input_tokens} in (+${u.cache_read_input_tokens || 0} cached), ${u.output_tokens} out | $${cost.toFixed(5)}`);
     }
 
     const n = results.length, ok = results.filter((r) => r.right).length, all = results.flatMap((r) => r.found.filter((f) => !f.missing));
     const avg = (xs) => xs.length ? xs.reduce((a, b) => a + b, 0) / xs.length : 0;
-    console.log(`[cast] SUMMARY right pieces on ${ok}/${n} | mean IoU ${avg(all.map((f) => f.raw)).toFixed(2)} raw, ${avg(all.map((f) => f.snapped)).toFixed(2)} snapped` +
+    console.log(`[cast] SUMMARY right pieces on ${ok}/${n} | read completely ${all.filter((f) => f.read).length}/${all.length} | mean IoU ${avg(all.map((f) => f.raw)).toFixed(2)} raw, ${avg(all.map((f) => f.snapped)).toFixed(2)} snapped` +
       ` | mean first piece ${(avg(results.filter((r) => r.tFirst != null).map((r) => r.tFirst)) / 1000).toFixed(2)} s | spent $${spent.toFixed(4)}`);
     fs.writeFileSync(path.join(S, 'cast-report.html'), report(results, { MODEL, EFFORT: `${EFFORT}, thinking ${THINK}${BOXES_FIRST ? ', boxes first' : ''}`, SEND_W, spent }));
     fs.writeFileSync(path.join(S, 'cast-results.json'), JSON.stringify(results.map((r) => ({ file: r.t.file, right: r.right, found: r.found, extra: r.extra, rejected: r.bad,
@@ -125,6 +134,6 @@ function report(results, o) {
     .b{position:absolute;box-sizing:border-box}.b span{position:absolute;top:-17px;left:0;font:600 11px sans-serif}
     .truth{border:2px solid #14a44d}.truth span{color:#14a44d}.decoy{border:1px dashed #d33}.decoy span{color:#d33}.raw{border:2px solid #f08c00}.snap{border:2px solid #2f6fed}
     pre{background:#f3f4f7;padding:8px 10px;border-radius:6px;white-space:pre-wrap;font-size:13px}.legend span{margin-right:16px}
-  </style><h1>Casting report</h1><p>${esc(o.MODEL)} · effort ${esc(o.EFFORT)} · image sent at ${o.SEND_W} px wide · spent $${o.spent.toFixed(4)}</p>
+  </style><h1>Casting report</h1><p>${esc(o.MODEL)} · effort ${esc(o.EFFORT)} · image sent at ${o.SEND_W || "full resolution"}${o.SEND_W ? " px wide" : ""} · spent $${o.spent.toFixed(4)}</p>
   <p class="legend"><span style="color:#14a44d">■ true piece</span><span style="color:#d33">▢ decoy</span><span style="color:#f08c00">■ model box</span><span style="color:#2f6fed">■ after snapping</span></p>${cards}`;
 }

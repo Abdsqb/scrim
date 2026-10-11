@@ -41,9 +41,11 @@ Choosing pieces:
 
 Rules for equations:
 - Reproduce the equation exactly as shown. Do not simplify, reorder or correct it.
-- Split it into parts in reading order. Joined together, the parts must render as the original equation.
+- An equation runs to the end of its line: include conditions and base cases written beside it, such as ", F(0) = 0".
+- Split it into parts in reading order. Joined together, the parts must reproduce every symbol of the original, nothing left out.
 - A part is one meaningful unit: one side of an equation, an operator name, one argument of a function, a summand.
-- Give a short id to every part a student might ask about. Use ids like "lhs", "min", "arg1". Punctuation, brackets and bare operators get no id.
+- Brackets, commas and bare operators are parts too, without an id. Give a short id to every other part a student might ask about, such as "lhs", "fn", "arg1".
+- Example: f(x) = \\max(0,\\ x) becomes [{"id":"lhs","tex":"f(x)"},{"tex":"{}={}"},{"id":"fn","tex":"\\\\max"},{"tex":"\\\\big("},{"id":"arg1","tex":"0"},{"tex":",\\\\ "},{"id":"arg2","tex":"x"},{"tex":"\\\\big)"}]
 - Write an operator that stands alone with empty groups on both sides so spacing is kept, for example {}={}.- Use standard LaTeX that KaTeX supports. No \\htmlId, no \\href, no macros.
 
 Rules for code:
@@ -136,4 +138,27 @@ function snap(px, W, H, box, { margin = 28, gap = 6, thresh = 20 } = {}) {
   return [x0, y0, x1 - x0, y1 - y0];
 }
 
-module.exports = { MODEL, system, lineParser, validate, validateBox, validateContent, snap };
+// Ask Casting about one screenshot. `client` is an Anthropic SDK client, `png` the screenshot as base64 at width x height.
+// onPiece is called with each valid piece the moment its line arrives (boxes in the sent image's pixels); onReject with anything
+// refused. Settings come from the accuracy tests in docs/06-test-results.md: thinking stays on at low effort, because without it the
+// model picks decoys. Resolves with the token usage.
+async function cast(client, { png, width, height, question, onPiece, onReject = () => {} }) {
+  const parser = lineParser((p) => {
+    if (p.kind === 'none') return onReject('nothing matches: ' + p.reason);
+    const err = validate(p, width, height); if (err) return onReject(err);
+    onPiece(p);
+  }, (line) => onReject('not JSON: ' + line.slice(0, 80)));
+  const stream = client.messages.stream({
+    model: MODEL, max_tokens: 8000, output_config: { effort: 'low' },
+    system: [{ type: 'text', text: system(width, height), cache_control: { type: 'ephemeral' } }],
+    messages: [{ role: 'user', content: [
+      { type: 'text', text: 'QUESTION\n' + question },
+      { type: 'image', source: { type: 'base64', media_type: 'image/png', data: png } },
+    ] }],
+  });
+  for await (const ev of stream) if (ev.type === 'content_block_delta' && ev.delta.type === 'text_delta') parser.push(ev.delta.text);
+  parser.end();
+  return (await stream.finalMessage()).usage;
+}
+
+module.exports = { MODEL, system, lineParser, validate, validateBox, validateContent, snap, cast };

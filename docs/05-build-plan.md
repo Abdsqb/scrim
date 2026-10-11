@@ -13,7 +13,7 @@ Each step ends with something you can see working. Do them in order. The AI mode
 | Running on Windows | Works at 100% scaling. 125% and 150% not checked |
 | Dragging a box to select a piece | Works. Not yet tried on a real PDF |
 | Layout by slots | Not built |
-| Finding and reading pieces with a model | Not built |
+| Finding and reading pieces with a model | Works: Casting, 10/10 picks and 18/18 readings on the generated screens. Not yet tried on real notes |
 | Director model | Not built. Draft prompt exists |
 | Stage memory and follow-ups | Not built |
 | Voice in and out | Not built |

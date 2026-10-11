@@ -33,25 +33,43 @@ Run on 2026-10-10 on the same PC, at 100% scaling, against the sample notes page
 
 Not tested: a real PDF with a real mouse, which is what "done" means for step 1.
 
-## Casting (step 4, first test)
+## Casting (step 4)
 
-Run on 2026-10-10 against the ten made-up screens from `npm run samples` (PDF viewer, course site, slides, notebook, each with decoy equations or code), using `npm run cast`: Claude Haiku 5.5, effort low, screenshot sent at 1568 by 980.
+Run on 2026-10-10 against the ten made-up screens from `npm run samples` (PDF viewer, course site, slides, notebook, each with decoy equations or code), using `npm run cast`.
+
+**Current settings:** Claude Haiku 5.5, effort low, thinking on, one line per piece, screenshot at full resolution (1920 by 1200; the model takes up to 2576 px on the long edge).
 
 | Measure | Result |
 | --- | --- |
-| Right pieces picked, decoys skipped | 48 of 49 screen runs over five runs. The one miss left out the distance formula on the k-NN screen once and got it on every other run |
-| Box overlap with the truth (IoU), mean | 0.88 to 0.89 as the model gives it, 0.90 after snapping |
-| Equations after snapping | Within 3 to 7 px of the truth on every edge |
-| Code panels after snapping | Within 0 to 1 px, except notebook cells (below) |
-| Time to the first piece | Mean 1.6 to 1.8 s. Up to 3.8 s on screens where the model wrote 500 to 850 output tokens. The target is about 1 s |
-| Cost | About $0.0004 per screen, $0.004 for all ten |
+| Right pieces picked, decoys skipped | 10 of 10 on the last three full runs |
+| Read completely (equation symbols match the original; code lines match exactly) | 18 of 18 |
+| Box overlap with the truth (IoU), mean | 0.89 as the model gives it, 0.92 after snapping |
+| Time to the first piece | Mean 1.1 to 1.3 s. Target about 1 s |
+| Cost | About $0.0004 per screen |
+| In the app (`--auto-ask` on the sample notes) | First piece lifted 1.2 to 1.5 s after asking; restore byte-for-byte identical |
 
-Notes:
-- **Snapping** (`snap()` in `prototype/casting.js`) was tuned on `npm run cast -- --dry`, which jitters the true boxes by up to 20 px with no API call: every piece lands within 0 to 7 px. If snapping reaches the edge of its search area it keeps the model's box rather than swallow neighbouring content.
-- **Notebook cells** are grey bars as wide as the page. The model boxes the code text plus some of the bar, and snapping leaves that box alone. It contains all the code, with extra grey.
-- **Bug found and fixed:** the validator joined equation parts with no space, so `\Rightarrow` followed by `T(n)` read as the unknown command `\RightarrowT` and a correct piece was rejected.
-- The screens are generated, so they are cleaner than real PDFs. Repeat on real course notes before trusting these numbers.
-- Not yet tried: thinking off, a reply that sends every box before any content (so pieces lift sooner), Claude Sonnet 5.5, Gemini.
+**Speed experiments** (each a full run of ten screens):
+
+| Setting | Right pieces | First piece |
+| --- | --- | --- |
+| Thinking on, one line per piece | 10/10 | 1.1 to 1.4 s |
+| Thinking off, one line per piece | 8/10, 8/10 | 1.2 s |
+| Thinking off, every box before any content | 9/10, 8/10 | 0.8 s |
+| Thinking on, every box first | 8/10 | 1.7 s |
+
+Thinking is what lets the model tell the right formula from a decoy. Telling it to start with JSON and not explain cut the first piece from about 1.7 s to 1.2 s with thinking still on.
+
+**What was wrong and got fixed along the way:**
+- The model left brackets and commas out of equations because the prompt said they "get no id". The prompt now says they are parts too, with a worked example, and the test checks readings.
+- It dropped base cases written beside an equation (`, F(0) = 0`). A prompt rule fixed it.
+- It split `\left(` and `\right)` into separate parts, which cannot render alone. Prompting against it made things worse (`\big\min`), so code repairs a lone one to `\big`.
+- At 1568 px wide it misread `np.sqrt(((` as four brackets. Full resolution fixed it, at about $0.0001 more per call.
+- The validator joined parts without a space, so `\Rightarrow` then `T(n)` read as an unknown command and a correct piece was refused.
+- Link and HTML commands (`\href`, `\url`, `\html...`) are now refused outright, on top of KaTeX's limited `trust`.
+
+**Snapping** (`snap()` in `prototype/casting.js`) was tuned on `npm run cast -- --dry`, which jitters the true boxes by up to 20 px with no API call: every piece lands within 0 to 7 px. If snapping reaches the edge of its search area it keeps the model's box rather than swallow neighbouring content. In notebook cells (grey bars as wide as the page) that means the model's box is kept: all the code plus some grey.
+
+**Caveat:** the screens are generated and cleaner than real PDFs. Repeat on real course notes before trusting these numbers. Sonnet 5.5 and Gemini are untried; Haiku has not needed them yet.
 
 ## Linux (first prototype)
 

@@ -26,6 +26,10 @@
   #hint { position: absolute; left: 50%; top: 22px; transform: translateX(-50%); font: 15px "Segoe UI", "DejaVu Sans", sans-serif; color: #e8eaef; white-space: nowrap;
           background: rgba(18,20,26,.88); border: 1px solid rgba(255,255,255,.14); border-radius: 999px; padding: 8px 18px; box-shadow: 0 6px 24px rgba(0,0,0,.35); opacity: 0; pointer-events: none; }
   #hint b { color: #fff; font-weight: 600; }
+  #hint.asking { pointer-events: auto; padding: 6px 8px 6px 18px; display: flex; align-items: center; gap: 12px; }
+  #hint input { width: 520px; background: transparent; border: 0; outline: 0; color: #fff; font: 16px "Segoe UI", "DejaVu Sans", sans-serif; }
+  #hint input::placeholder { color: #9aa0ab; }
+  #hint small { color: #9aa0ab; font-size: 13px; padding-right: 10px; }
 </style>
 <img id="shot">
 <div id="veil"></div>
@@ -271,10 +275,25 @@ window.freeze = async (src) => { stage.shotSrc = src; const im = $('shot'); im.s
   const c = document.createElement('canvas'); c.width = innerWidth; c.height = innerHeight; stage.px = c.getContext('2d', { willReadFrequently: true }); stage.px.drawImage(im, 0, 0, innerWidth, innerHeight); };
 // Play a script: an array of moves, in order. Resolves when the stage is clean again.
 // A scene always ends restored, whether it finished, was ended with abort(), or a move failed.
+// `script` may also be 'feed': then moves are played as they arrive through feed(), until closeFeed(). This is how Casting's pieces
+// lift while the model is still streaming, and later how the Director's moves will play.
+const feedQ = { items: [], closed: true, wake: null };
+const wakeFeed = () => { const w = feedQ.wake; feedQ.wake = null; if (w) w(); };
+window.openFeed = () => { feedQ.items = []; feedQ.closed = false; };
+window.feed = (m) => { feedQ.items.push(m); wakeFeed(); };
+window.closeFeed = () => { feedQ.closed = true; wakeFeed(); };
+async function* fromFeed() {
+  for (;;) {
+    if (stage.aborted) return;
+    if (feedQ.items.length) yield feedQ.items.shift();
+    else if (feedQ.closed) return;
+    else await new Promise((r) => { feedQ.wake = r; });   // waiting for the model, not animating, so this is outside the clock
+  }
+}
 window.run = async (script, { manual = false, gap = 260 } = {}) => {
   stage.done = false; stage.error = null; stage.aborted = false; stage.restored = false; clock.rate = 1; clock.manual = manual; if (!manual) live();
   try {
-    for (const m of script) {
+    for await (const m of (script === 'feed' ? fromFeed() : script)) {
       if (stage.aborted) break;
       const f = moves[m.move]; if (!f || m.move.startsWith('_')) throw new Error('unknown move ' + m.move);
       await f(m); if (m.move === 'restore') stage.restored = true;
@@ -284,26 +303,37 @@ window.run = async (script, { manual = false, gap = 260 } = {}) => {
   if (!stage.restored) { clock.rate = 1.6; try { await moves.restore(); } catch (e) { stage.error = stage.error || String(e); } }
   clock.rate = 1; stage.done = true; return window.state();
 };
-window.abort = () => { if (stage.done) return; stage.aborted = true; clock.rate = 8; if (stage.release) stage.release(); };   // finish the current move fast, then restore
+window.abort = () => { if (stage.done) return; stage.aborted = true; clock.rate = 8; if (stage.release) stage.release(); wakeFeed(); };   // finish the current move fast, then restore
 
 // ---------- selecting pieces: the user drags a box around each one on the frozen screen, and it lifts on release ----------
 // select() resolves with [{ piece, rect }] when the user is done (Enter or the hotkey again, via finishSelect), or null on Esc (via cancel).
-// Lifted pieces stay on the stage; the next run() carries on from them and restores at the end.
-const sel = { on: false, picks: [], drag: null, done: null, max: 4, min: 12 };
+// With { ask: true } a question box comes first and it resolves with { question, picks }: Casting finds the pieces from the question,
+// and dragging a box is the fallback. Lifted pieces stay on the stage; the next run() carries on from them and restores at the end.
+const sel = { on: false, ask: false, picks: [], drag: null, done: null, max: 4, min: 12 };
 function hint(html, show) { const h = $('hint'); if (show) h.innerHTML = html; const from = parseFloat(h.style.opacity) || 0;
   return tween(show ? 260 : 200, (t) => { h.style.opacity = lerp(from, show ? 1 : 0, t); }); }
-window.select = ({ max = 4, min = 12 } = {}) => new Promise((resolve) => {
+window.select = ({ max = 4, min = 12, ask = false } = {}) => new Promise((resolve) => {
   live(); clock.manual = false; clock.rate = 1; stage.done = false; stage.aborted = false; stage.error = null;
-  Object.assign(sel, { on: true, picks: [], drag: null, done: resolve, max, min });
+  Object.assign(sel, { on: true, ask, picks: [], drag: null, done: resolve, max, min });
   document.body.classList.add('selecting');
-  hint('Drag a box around each piece &nbsp;·&nbsp; <b>Enter</b> when done &nbsp;·&nbsp; <b>Esc</b> to cancel', true);
+  if (!ask) return hint('Drag a box around each piece &nbsp;·&nbsp; <b>Enter</b> when done &nbsp;·&nbsp; <b>Esc</b> to cancel', true);
+  $('hint').classList.add('asking');
+  hint('<input id="question" placeholder="Ask about something on your screen…" autocomplete="off" spellcheck="false"><small>Enter to ask · or drag a box · Esc</small>', true);
+  const q = $('question'); q.focus();
+  q.addEventListener('keydown', (e) => { if (e.key === 'Enter' && (q.value.trim() || sel.picks.length)) endSelect(true); });
 });
 function endSelect(ok) {
   if (!sel.on) return; sel.on = false; sel.drag = null; $('sel').style.display = 'none'; document.body.classList.remove('selecting');
-  hint('', false);
+  const question = sel.ask && $('question') ? $('question').value.trim() : '';
+  if ($('question')) $('question').blur();
+  hint('', false).then(() => $('hint').classList.remove('asking'));
   if (!ok) return sel.done(null);
-  Promise.all(sel.picks.map((p) => p.lifted)).then(() => sel.done(sel.picks.map(({ piece, rect }) => ({ piece, rect }))));   // let the last lift land first
+  Promise.all(sel.picks.map((p) => p.lifted)).then(() => {   // let the last lift land first
+    const picks = sel.picks.map(({ piece, rect }) => ({ piece, rect }));
+    sel.done(sel.ask ? { question, picks } : picks);
+  });
 }
+window.setQuestion = (text) => { const q = $('question'); if (q) q.value = text; };   // tests type the question this way
 window.finishSelect = () => endSelect(true);
 window.cancel = () => { if (sel.on) endSelect(false); else window.abort(); };   // Esc: leave selection, or end a playing scene early
 function dragRect(d, e) {                             // the dragged box in either direction, clipped to the screen
@@ -311,7 +341,7 @@ function dragRect(d, e) {                             // the dragged box in eith
   const x1 = Math.min(innerWidth, Math.max(d.x, e.clientX)), y1 = Math.min(innerHeight, Math.max(d.y, e.clientY));
   return { x: Math.round(x0), y: Math.round(y0), w: Math.round(Math.max(0, x1 - x0)), h: Math.round(Math.max(0, y1 - y0)) };
 }
-addEventListener('mousedown', (e) => { if (!sel.on || e.button !== 0 || sel.picks.length >= sel.max) return; sel.drag = { x: e.clientX, y: e.clientY }; });
+addEventListener('mousedown', (e) => { if (!sel.on || e.button !== 0 || sel.picks.length >= sel.max || e.target.closest('#hint')) return; sel.drag = { x: e.clientX, y: e.clientY }; });
 addEventListener('mousemove', (e) => { if (!sel.drag) return; const r = dragRect(sel.drag, e), b = $('sel');
   Object.assign(b.style, { display: 'block', left: r.x + 'px', top: r.y + 'px', width: r.w + 'px', height: r.h + 'px' }); });
 addEventListener('mouseup', (e) => {

@@ -14,14 +14,14 @@ There is a working prototype in `prototype/`. It is a hand-written demo, not the
 
 Works today:
 - Capture the screen, freeze it in a full-screen always-on-top window, restore it.
-- Select pieces on any screen by dragging a box. Each lifts on release; Enter recedes the page; Esc restores.
+- Ask a typed question on any screen: Casting (`prototype/casting.js`, Claude Haiku 5.5) finds the pieces on the full screenshot, they lift as they stream in, the page recedes, and each turns into live math or code. Needs `ANTHROPIC_API_KEY` in the git-ignored `.env`.
+- Dragging a box around a piece is the fallback. Each lifts on release; Enter recedes the page; Esc restores.
 - A stage that plays a script of moves in an explainer-video style (see `docs/03-motion-style.md`).
 - A 33-second demo scene with a follow-up question, played live or recorded frame by frame.
 - Global hotkey, Esc to end a scene early.
 
 Not built yet:
-- Any AI model call. The demo script is written by hand in `prototype/demo-script.js`.
-- Finding the pieces a question is about on the full screenshot, and reading them into LaTeX or code lines, with a vision model. Dragging a box is the fallback.
+- The Director: nothing explains the pieces yet. After Casting the scene holds with a caption. The full demo scene in `prototype/demo-script.js` is still hand-written.
 - Layout. Every position in the demo script is a hand-picked pixel coordinate.
 - Voice in, voice out, stage memory for follow-ups, accounts, server, installer.
 
@@ -31,13 +31,15 @@ Runs on the owner's Windows PC (1920x1200, 100% scaling): the scene, Esc and the
 
 ```
 npm install        # once
-npm start          # the real app: hotkey (Ctrl+Alt+Space, or Alt+Shift+Space if taken) freezes any screen, drag boxes, Enter, Esc restores, Ctrl+Alt+Q quits
+npm start          # the real app: hotkey (Ctrl+Alt+Space, or Alt+Shift+Space if taken) freezes any screen, type a question + Enter (or drag boxes), Esc restores, Ctrl+Alt+Q quits
 npm run demo       # the sample notes page and the hand-written demo scene, on the hotkey
 npm run demo:auto  # plays the demo scene once without the hotkey, then exits (for checking)
 npm run select:auto  # drags two boxes by itself and checks the restore (npx electron prototype/live.js --auto-select --esc-while-selecting tests Esc mid-selection)
 npm run record     # saves every frame to prototype/frames/ on a stepped clock
 npm test           # 12 checks: equation splitting, streamed script parsing, cost model
-npm run samples    # renders 10 made-up study screens to samples/ (git-ignored) with truth.json: question, right pieces, true boxes
+npm run samples    # renders 10 made-up study screens to samples/ (git-ignored) with truth.json: question, right pieces, true boxes and content
+npm run cast       # Casting accuracy test on those screens (about $0.004); --only=01, --dry (no API call), --model=, --thinking=off, --format=boxes-first
+npx electron prototype/live.js --auto-ask   # one real Casting call on the sample notes, checks pieces and restore
 ```
 
 ## How it fits together
