@@ -147,7 +147,7 @@ Point mode runs on the **live screen**. The stage window is transparent; once Ca
 
 Measured on the settings sequence (screens 17, 17b, 17c): the next step is on screen about 1.8 to 2 s after a click (guide call about 1.2 s, capture about 0.3 s, settle 0.3 s). Thinking on or off made no difference to speed, so it stays on.
 
-Not yet checked: click coordinates from uiohook at display scaling above 100%. A feature inside a closed menu is now handled step by step: so the Director points at what opens it and says what to look for next. A guided mode that waits for the click and looks again would remove this limit.
+Not yet checked: click coordinates from uiohook at display scaling above 100%. A feature inside a closed menu is handled step by step: the first step opens the menu, and the next step is found on the screen that appears.
 
 ## The director
 
