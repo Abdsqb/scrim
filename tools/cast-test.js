@@ -48,7 +48,7 @@ app.whenReady().then(async () => {
   try {
     if (!DRY) process.loadEnvFile(path.join(ROOT, '.env'));
     const client = DRY ? null : new Anthropic();
-    const truth = JSON.parse(fs.readFileSync(path.join(S, 'truth.json'))).filter((t) => t.file.startsWith(ONLY));
+    const truth = JSON.parse(fs.readFileSync(path.join(S, 'truth.json'))).filter((t) => t.file.startsWith(ONLY) && !t.guideOnly);   // guide-only screens are later states of a guided flow
     if (!truth.length) throw new Error(`no sample matches --only=${ONLY}. Run npm run samples first.`);
     if (truth.length > MAX_CALLS) throw new Error(`${truth.length} screens but --max-calls=${MAX_CALLS}`);
     const price = PRICE[MODEL] || PRICE['claude-haiku-5-5'];

@@ -211,6 +211,22 @@ module.exports = [
       <div class="row-set">Send usage statistics<div class="tog"></div></div><div class="row-set">Language<div class="btn">English ▾</div></div></div></div>`,
   },
   {
+    name: '17b-settings-appearance', chrome: 'app', title: 'Settings', mode: 'point',
+    question: 'where do I turn on dark mode?', expect: ['darkopt'],
+    blocks: [],
+    html: `<div class="settings"><div class="side"><div>General</div><div class="on">Appearance</div><div>Notifications</div><div>Privacy</div><div>Accounts</div><div>About</div></div>
+      <div class="panel"><h2>Appearance</h2><div class="row-set">Theme<div class="seg3"><div class="on">Light</div><div data-piece="darkopt" data-kind="target">Dark</div><div>System</div></div></div>
+      <div class="row-set">Accent colour<div class="btn">Blue ▾</div></div><div class="row-set">Text size<div class="btn">Medium ▾</div></div><div class="row-set">Reduce motion<div class="tog"></div></div></div></div>`,
+  },
+  {
+    name: '17c-settings-dark', chrome: 'app', title: 'Settings', mode: 'point', guideOnly: true,
+    question: 'where do I turn on dark mode?', expect: ['darkon'],
+    blocks: [],
+    html: `<div class="settings"><div class="side"><div>General</div><div class="on">Appearance</div><div>Notifications</div><div>Privacy</div><div>Accounts</div><div>About</div></div>
+      <div class="panel"><h2>Appearance</h2><div class="row-set">Theme<div class="seg3"><div>Light</div><div class="on" data-piece="darkon" data-kind="target">Dark</div><div>System</div></div></div>
+      <div class="row-set">Accent colour<div class="btn">Blue ▾</div></div><div class="row-set">Text size<div class="btn">Medium ▾</div></div><div class="row-set">Reduce motion<div class="tog"></div></div></div></div>`,
+  },
+  {
     name: '18-error-dialog', chrome: 'app', title: 'report.docx — Writer', mode: 'point',
     question: 'what does this mean and what should I do?', expect: ['msg'], optional: ['saveas', 'retry', 'title'],
     blocks: [],

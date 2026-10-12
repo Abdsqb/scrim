@@ -15,13 +15,16 @@ const path = require('path');
 const demoScript = require('./demo-script');
 const casting = require('./casting');
 const director = require('./director');
+const guide = require('./guide');
 const has = (flag) => process.argv.includes(flag);
 const AUTO = has('--auto'), ABORT = has('--abort'), AUTO_SELECT = has('--auto-select'), DEMO = has('--demo') || AUTO;
 const ESC_EARLY = has('--esc-while-selecting');   // with --auto-select: press Esc before Enter, with two pieces already lifted
 const askArg = process.argv.find((a) => a.startsWith('--auto-ask'));
 const AUTO_ASK = askArg ? (askArg.split('=')[1] || 'how does this equation fit into this algorithm?') : null;
 // --screen=samples/11-balance-sheet-slides.png shows that picture full screen instead of the sample notes, for --auto-ask and --demo.
-const SCREEN = (process.argv.find((a) => a.startsWith('--screen=')) || '').slice(9);
+// --screens=a.png,b.png,... is a sequence for testing guided mode: each simulated click moves the stand-in screen to the next picture.
+const SCREENS = ((process.argv.find((a) => a.startsWith('--screens=')) || '').slice(10) || (process.argv.find((a) => a.startsWith('--screen=')) || '').slice(9)).split(',').filter(Boolean);
+const SCREEN = SCREENS[0] || '';
 const HOTKEYS = ['Control+Alt+Space', 'Alt+Shift+Space', 'Control+Alt+X'];   // first one that is free wins
 const log = (...a) => console.log('[live]', ...a);
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -39,14 +42,15 @@ app.whenReady().then(async () => {
   log(`display ${W}x${H} at scale ${sf}, ${process.platform}, electron ${process.versions.electron}, ${client ? 'Casting on' : 'no API key in .env: dragging only'}`);
 
   // The sample page stands in for the user's screen in the demo and the tests. The real app has no window of its own.
-  let notes = null;
+  let notes = null, screenAt = 0;
+  const setScreen = async (i) => {                   // show one of the test pictures full screen; a file page may show a local picture, a data: page may not
+    screenAt = i; const page = path.join(app.getPath('temp'), 'scrim-screen.html');
+    require('fs').writeFileSync(page, `<body style="margin:0;overflow:hidden"><img src="${require('url').pathToFileURL(path.resolve(SCREENS[i]))}" style="width:100vw;height:100vh;display:block">`);
+    await notes.loadFile(page); await sleep(300);
+  };
   if (DEMO || AUTO_SELECT || AUTO_ASK) {
     notes = cover(new BrowserWindow({ x, y, width: W, height: H, frame: false, backgroundColor: '#fbfaf6' }), display.bounds);
-    if (SCREEN) {                                   // a file page may show a local picture; a data: page may not
-      const page = path.join(app.getPath('temp'), 'scrim-screen.html');
-      require('fs').writeFileSync(page, `<body style="margin:0;overflow:hidden"><img src="${require('url').pathToFileURL(path.resolve(SCREEN))}" style="width:100vw;height:100vh;display:block">`);
-      await notes.loadFile(page); await sleep(300);
-    }
+    if (SCREEN) await setScreen(0);
     else await notes.loadFile(path.join(__dirname, 'notes.html'));
     notes.setAlwaysOnTop(true, 'floating'); notes.moveTop();   // the stand-in screen stays in front of other windows; the stage sits above it
   }
@@ -74,50 +78,52 @@ app.whenReady().then(async () => {
     return source.thumbnail;
   }
 
-  // Casting: send the screenshot and the question, lift each piece the moment it arrives, then turn the pieces live.
-  // Plays into a running feed. Without a Director there is no explanation yet, so the scene holds until Esc.
-  async function castScene(shot, question) {
+  // What the models are sent: full resolution reads small symbols better (tested: nested brackets in code), up to the 2576 px the
+  // model takes on the long edge. k maps the sent image's pixels back to the screen's.
+  function prepare(shot) {
     const { width: PW, height: PH } = shot.getSize();
-    // Full resolution reads small symbols better (tested: nested brackets in code); 2576 px is the most the model takes on the long edge.
     const sent = PW > 2576 || PH > 2576 ? shot.resize(PW >= PH ? { width: 2576, quality: 'best' } : { height: 2576, quality: 'best' }) : shot, { width: sw, height: sh } = sent.getSize();
-    const k = PW / sw, px = shot.toBitmap(), placed = [], t0 = performance.now();
-    let mode = 'lift';                                // Casting's first line: lift the pieces out, or point at places in place
-    feed({ move: 'ask', text: question, pause: 0 });
-    const usage = await casting.cast(client, {
-      png: sent.toPNG().toString('base64'), width: sw, height: sh, question,
-      onMode: (m) => { mode = m; log(`Casting chose ${m} mode`); },
-      onPiece: (p) => {
-        // Model box (sent pixels) -> screen pixels -> snapped to the content -> stage (CSS) pixels.
-        const s = casting.snap(px, PW, PH, p.box.map((v) => v * k), { kind: p.kind });
-        const rect = { x: Math.round(s[0] / sf), y: Math.round(s[1] / sf), w: Math.round(s[2] / sf), h: Math.round(s[3] / sf) };
-        const piece = 'c' + (placed.length + 1);
-        placed.push({ ...p, piece, rect });
-        if (process.env.SCRIM_DEBUG) log('piece', p.kind, JSON.stringify(p.parts || p.lines || p.rows || p.about || p.label || '').slice(0, 400));
-        if (placed.length === 1) log(`first piece ${((performance.now() - t0) / 1000).toFixed(2)} s after asking`);
-        if (mode === 'point') { placed[placed.length - 1].anchored = true; feed({ move: 'anchor', piece, rect, pause: 0 }); }   // stays where it is
-        else feed({ move: 'lift', piece, rect, pause: 0 });
-      },
-      onReject: (why) => log('Casting refused a line:', why),
-    });
+    return { shot, PW, PH, sw, sh, k: PW / sw, png: sent.toPNG().toString('base64') };
+  }
+  const toStage = (view, box) => ({ x: Math.round(box[0] * view.k / sf), y: Math.round(box[1] * view.k / sf), w: Math.round(box[2] * view.k / sf), h: Math.round(box[3] * view.k / sf) });
+
+  // Casting: send the screenshot and the question, lift each piece the moment it arrives, then turn the pieces live and let the
+  // Director explain. If Casting's first line says point mode, this stops there and returns, and guided mode takes over.
+  async function castScene(view, question, { signal, onMode = () => {} } = {}) {
+    const placed = [], t0 = performance.now();
+    let mode = 'lift', px = null, usage = null;
+    try {
+      usage = await casting.cast(client, {
+        png: view.png, width: view.sw, height: view.sh, question, signal,
+        onMode: (m) => { mode = m; log(`Casting chose ${m} mode`); onMode(m); },
+        onPiece: (p) => {
+          if (mode !== 'lift') return;
+          // Model box (sent pixels) -> screen pixels -> snapped to the content -> stage (CSS) pixels.
+          px = px || view.shot.toBitmap();
+          const s = casting.snap(px, view.PW, view.PH, p.box.map((v) => v * view.k), { kind: p.kind });
+          const rect = { x: Math.round(s[0] / sf), y: Math.round(s[1] / sf), w: Math.round(s[2] / sf), h: Math.round(s[3] / sf) };
+          const piece = 'c' + (placed.length + 1);
+          placed.push({ ...p, piece, rect });
+          if (process.env.SCRIM_DEBUG) log('piece', p.kind, JSON.stringify(p.parts || p.lines || p.rows || p.about || p.label || '').slice(0, 400));
+          if (placed.length === 1) log(`first piece ${((performance.now() - t0) / 1000).toFixed(2)} s after asking`);
+          feed({ move: 'lift', piece, rect, pause: 0 });
+        },
+        onReject: (why) => log('Casting refused a line:', why),
+      });
+    } catch (e) { if (mode !== 'point') throw e; }   // in point mode Casting is cancelled on purpose
+    if (mode === 'point') return { mode, placed };
     log(`Casting done in ${((performance.now() - t0) / 1000).toFixed(2)} s: ${placed.map((p) => p.kind).join(', ') || 'nothing'} | tokens ${usage.input_tokens} in, ${usage.output_tokens} out`);
     if (!placed.length) {
       feed({ move: 'say', text: "I couldn't find that on your screen. Press Esc, then drag a box around it." });
-      return placed;
+      return { mode, placed };
     }
     // Simple placement until the stage owns layout (build step 2): Casting's pieces in a column on the left, in the order Casting
     // ranked them, and the Director's canvas on the right. Heights are estimates, since nothing is measured until it is on stage.
     // Only one code block can be live, so others stay pictures.
-    if (mode === 'point') {
-      // Point mode runs on the live screen: the screenshot fades out, and the window lets every click through to the apps under it,
-      // so the person can press the real buttons while the guidance stays on top. Esc still ends it (a global shortcut).
-      feed({ move: 'golive', pause: 0 });
-      overlay.setIgnoreMouseEvents(true, { forward: true });
-      feed({ move: 'dim', pause: 0 });
-    }
-    else feed({ move: 'recede', pause: 120 });
+    feed({ move: 'recede', pause: 120 });
     const left = 56, colW = Math.round(W * 0.36), mid = left + colW / 2;
     let y = 130, codeLive = false;
-    for (const p of mode === 'point' ? [] : placed) {   // in point mode nothing moves: the Director points at the real screen
+    for (const p of placed) {
       if (p.kind === 'equation') {
         const parts = casting.equationParts(p, p.piece + '-');   // ids must be unique on the stage, so each is prefixed with its piece
         feed({ move: 'write', piece: p.piece, row: p.piece, at: { x: mid, y: y + 26 }, size: 34, parts, pause: 60 });
@@ -133,13 +139,13 @@ app.whenReady().then(async () => {
       } else if (p.kind === 'table') {
         feed({ move: 'table', piece: p.piece, at: { x: left, y }, size: 18, rows: p.rows });
         y += p.rows.length * 18 * 1.95 + 36;
-      } else {                                        // a figure, or a second code block: it stays a picture
+      } else {                                        // a figure, a second code block, or a stray target: it stays a picture
         const w = Math.round(Math.min(colW, p.rect.w * 1.1, p.rect.w * 320 / p.rect.h));
         feed({ move: 'place', piece: p.piece, at: { x: mid - w / 2, y }, w });
         y += p.rect.h * w / p.rect.w + 36;
       }
     }
-    const canvasX = mode === 'point' ? Math.round(W * 0.6) : left + colW + 80;
+    const canvasX = left + colW + 80;
     js(`setCanvas(${JSON.stringify({ x: canvasX, y: 140, w: W - canvasX - 60 })})`);
 
     // The Director writes the explanation; each checked move plays as soon as it arrives.
@@ -158,7 +164,77 @@ app.whenReady().then(async () => {
       log(`Director done in ${((performance.now() - t1) / 1000).toFixed(2)} s: ${moves} moves | tokens ${dUsage.input_tokens} in, ${dUsage.output_tokens} out`);
     } catch (e) { log('Director failed:', e.message); }
     if (!moves) feed({ move: 'say', text: "I found the pieces, but couldn't build an explanation this time. Esc to go back." });
-    return placed;
+    return { mode, placed };
+  }
+
+  // ----- Guided mode: point-mode questions run on the live screen, one step at a time -----
+  // Each step spotlights one control and says what to do. The moment the person clicks (anywhere: uiohook sees clicks that go to
+  // other apps), that step's guidance is cleared, the screen is looked at again (the stage is excluded from the capture), and the
+  // guide is asked for the next step. When the goal is reached it says so and the stage closes by itself.
+  let hook = null, pending = null, endGuide = null;
+  function startHook() {
+    if (hook) return hook.uIOhook.start();
+    hook = require('uiohook-napi');
+    const act = (e, key) => {
+      if (!pending) return;
+      const x = e.x / sf, y = e.y / sf, r = pending.rect, onTarget = !key && x >= r.x - 14 && x <= r.x + r.w + 14 && y >= r.y - 14 && y <= r.y + r.h + 14;
+      if (pending.typing && !key && onTarget) return;   // clicking into the field to type is not the end of a typing step
+      const p = pending; pending = null; p.resolve({ x, y, onTarget: onTarget || key === 'enter', key });
+    };
+    hook.uIOhook.on('mousedown', (e) => act(e, null));
+    hook.uIOhook.on('keydown', (e) => { if (e.keycode === hook.UiohookKey.Enter) act(e, 'enter'); });
+    hook.uIOhook.start();
+  }
+  const stopHook = () => { if (hook) hook.uIOhook.stop(); pending = null; };
+  function waitForAction(rect, typing) {
+    return new Promise((resolve) => {
+      pending = { rect, typing, resolve };
+      endGuide = () => { if (pending) { pending = null; resolve(null); } };
+      if (AUTO_ASK && SCREENS.length > 1) setTimeout(async () => {   // test: act on the target and move the stand-in screen on
+        if (!pending || pending.resolve !== resolve) return;
+        await setScreen(Math.min(screenAt + 1, SCREENS.length - 1));
+        pending = null; resolve({ x: rect.x + rect.w / 2, y: rect.y + rect.h / 2, onTarget: true });
+      }, 4500);
+    });
+  }
+  async function look() {                            // the screen as it is now; the stage is excluded from the capture
+    const sources = await desktopCapturer.getSources({ types: ['screen'], thumbnailSize: { width: Math.round(W * sf), height: Math.round(H * sf) } });
+    return prepare((sources.find((s) => s.display_id === String(display.id)) || sources[0]).thumbnail);
+  }
+  async function guided(view, goal, first) {
+    feed({ move: 'golive', pause: 0 });
+    overlay.setIgnoreMouseEvents(true, { forward: true });   // every click goes through to the apps underneath
+    overlay.setContentProtection(true);                // so looking again sees the app, not the guidance
+    feed({ move: 'dim', pause: 0 });
+    startHook();
+    const history = []; let res = await first, n = 0;
+    while (n < 12) {
+      const step = res && res.step;
+      if (!step) { log('guide failed:', res && (res.error || res.raw)); feed({ move: 'say', text: "I couldn't work out the next step from here. Press Esc to close." }); await waitForAction({ x: -999, y: -999, w: 0, h: 0 }); break; }
+      if (step.done || step.stuck) { log(`guide: ${step.done ? 'done' : 'stuck'}`); feed({ move: 'say', text: step.say }); feed({ move: 'hold', ms: step.done ? 2400 : 4500 }); break; }
+      n++;
+      const rect = toStage(view, step.box), id = 'g' + n;
+      log(`step ${n}: ${step.do} "${step.label}"${step.last ? ' (last)' : ''}`);
+      feed({ move: 'anchor', piece: id, rect, pause: 0 });
+      feed({ move: 'say', text: step.say, pause: 0 });
+      feed({ move: 'spotlight', id, pause: 0 });
+      feed({ move: 'marker', id, n, pause: 0 });
+      feed({ move: 'pulse', id, pause: 0 });
+      const action = await waitForAction(rect, step.do === 'type');
+      if (!action) break;                              // Esc
+      js('clearNow()');
+      history.push({ n, do: step.do, label: step.label, onTarget: action.onTarget });
+      js('thinking(true)');
+      const t = performance.now();
+      await sleep(300);                                // let a menu open or a page settle before looking again
+      view = await look();
+      const tModel = performance.now();
+      res = await guide.next(client, { png: view.png, width: view.sw, height: view.sh, goal, history }).catch((e) => ({ error: e.message }));
+      log(`guide call ${((performance.now() - tModel) / 1000).toFixed(2)} s`);
+      js('thinking(false)');
+      log(`next step ready ${((performance.now() - t) / 1000).toFixed(2)} s after the click`);
+    }
+    stopHook(); overlay.setContentProtection(false);
   }
 
   async function explain() {
@@ -167,11 +243,11 @@ app.whenReady().then(async () => {
     try {
       const rects = DEMO ? await notes.webContents.executeJavaScript('pieceRects()') : null;
       const shot = await freeze();
-      globalShortcut.register('Escape', () => { js('cancel()'); });
+      globalShortcut.register('Escape', () => { js('cancel()'); if (endGuide) endGuide(); });
       let before = null;
       if (AUTO_SELECT || AUTO_ASK) { await sleep(300); before = (await overlay.webContents.capturePage()).toBitmap(); }
 
-      let script, picks = null, placed = null;
+      let script, picks = null;
       if (DEMO) {
         if (ABORT) setTimeout(() => js('abort()'), 6000);
         script = demoScript(W, rects);
@@ -192,15 +268,25 @@ app.whenReady().then(async () => {
           const running = js(`run('feed')`);
           if (AUTO_ASK) {                               // test: save stills of the scene every 4 s, then press Esc
             const shots = path.join(__dirname, '..', 'samples', 'stills'); require('fs').mkdirSync(shots, { recursive: true });
-            const screenPng = async () => (await desktopCapturer.getSources({ types: ['screen'], thumbnailSize: { width: Math.round(W * sf), height: Math.round(H * sf) } }))[0].thumbnail.toPNG();
-            for (let k = 1; k <= 9; k++) setTimeout(async () => require('fs').writeFileSync(path.join(shots, `t${String(k * 4).padStart(2, '0')}s.png`), await screenPng()), k * 4000);
-            setTimeout(() => js('cancel()'), 38000);
+            const still = async () => {                 // briefly let the stage show in captures, so the still includes it
+              overlay.setContentProtection(false); await sleep(120);
+              const png = (await desktopCapturer.getSources({ types: ['screen'], thumbnailSize: { width: Math.round(W * sf), height: Math.round(H * sf) } }))[0].thumbnail.toPNG();
+              overlay.setContentProtection(!!hook && !!pending); return png;
+            };
+            for (let k = 1; k <= 14; k++) setTimeout(async () => require('fs').writeFileSync(path.join(shots, `t${String(k * 3).padStart(2, '0')}s.png`), await still()), k * 3000);
+            setTimeout(() => { js('cancel()'); if (endGuide) endGuide(); }, 45000);
           }
-          placed = await castScene(shot, question);
-          feed({ move: 'wait' });
+          feed({ move: 'ask', text: question, pause: 0 });
+          // Casting and the first guide step start together; whichever mode Casting picks, the other call is cancelled, so a
+          // how-to question waits no longer than an explanation does.
+          const view = prepare(shot), stopCast = new AbortController(), stopGuide = new AbortController();
+          const first = guide.next(client, { png: view.png, width: view.sw, height: view.sh, goal: question, signal: stopGuide.signal }).catch((e) => ({ error: e.message }));
+          const r = await castScene(view, question, { signal: stopCast.signal, onMode: (m) => (m === 'point' ? stopCast : stopGuide).abort() });
+          if (r.mode === 'point') await guided(view, question, first);
+          else feed({ move: 'wait' });
           js('closeFeed()');
           const result = await running;
-          return await finish(result, before, { placed });
+          return await finish(result, before, { placed: r.placed, mode: r.mode });
         }
         log(picks ? `selected ${picks.length}: ${JSON.stringify(picks.map((p) => p.rect))}` : 'cancelled');
         // Dragged pieces: the page recedes behind them and the scene holds until Esc.
@@ -210,7 +296,7 @@ app.whenReady().then(async () => {
       const result = await js(`run(${JSON.stringify(script)})`);
       return await finish(result, before, { picks });
     } catch (e) { log('ERROR', e.stack || e); return { error: String(e) }; }
-    finally { selecting = false; globalShortcut.unregister('Escape'); globalShortcut.unregister('Return'); overlay.setIgnoreMouseEvents(false); overlay.hide(); busy = false; }
+    finally { selecting = false; stopHook(); endGuide = null; globalShortcut.unregister('Escape'); globalShortcut.unregister('Return'); overlay.setContentProtection(false); overlay.setIgnoreMouseEvents(false); overlay.hide(); busy = false; }
   }
 
   async function finish(result, before, extra) {
@@ -258,8 +344,9 @@ app.whenReady().then(async () => {
     if (!client) { log('FAIL --auto-ask needs ANTHROPIC_API_KEY in .env'); process.exitCode = 1; return app.quit(); }
     const r = await explain();
     const kinds = r && r.placed ? r.placed.map((p) => p.kind).sort().join(',') : '';
-    const ok = r && !r.error && r.identical && (SCREEN ? kinds.length > 0 : kinds.includes('code') && kinds.includes('equation'));   // helpful extra context is fine
-    log(ok ? `PASS Casting found ${kinds}, the pieces lifted and went live, and the screen came back identical` : 'FAIL ' + JSON.stringify({ ...r, placed: kinds }));
+    // guided mode places nothing; it passes if the scene ran and the screen came back. Helpful extra context is fine otherwise.
+    const ok = r && !r.error && r.identical && (r.mode === 'point' || (SCREEN ? kinds.length > 0 : kinds.includes('code') && kinds.includes('equation')));
+    log(ok ? `PASS ${r.mode === 'point' ? 'guided mode ran' : `Casting found ${kinds}, the pieces lifted and went live,`} and the screen came back identical` : 'FAIL ' + JSON.stringify({ ...r, placed: kinds }));
     process.exitCode = ok ? 0 : 1; app.quit();
   }, 1200);
 });

@@ -229,10 +229,11 @@ function snap(px, W, H, box, { kind = 'equation', margin = 28, gap = 6, thresh =
 // onPiece is called with each valid piece the moment its line arrives (boxes in the sent image's pixels); onReject with anything
 // refused. Settings come from the accuracy tests in docs/06-test-results.md: thinking stays on at low effort, because without it the
 // model picks decoys. Resolves with the token usage.
-async function cast(client, { png, width, height, question, onPiece, onMode = () => {}, onReject = () => {} }) {
+async function cast(client, { png, width, height, question, signal, onPiece, onMode = () => {}, onReject = () => {} }) {
   const parser = lineParser((p) => {
     if (p && (p.mode === 'lift' || p.mode === 'point') && !p.kind) return onMode(p.mode);
     if (p.kind === 'none') return onReject('nothing matches: ' + p.reason);
+    if (!p.kind) return onReject('a line with no kind: ' + JSON.stringify(p).slice(0, 200));
     const err = validate(p, width, height); if (err) return onReject(err);
     onPiece(p);
   }, (line) => onReject('not JSON: ' + line.slice(0, 80)));
@@ -243,7 +244,7 @@ async function cast(client, { png, width, height, question, onPiece, onMode = ()
       { type: 'text', text: 'QUESTION\n' + question },
       { type: 'image', source: { type: 'base64', media_type: 'image/png', data: png } },
     ] }],
-  });
+  }, { signal });
   for await (const ev of stream) if (ev.type === 'content_block_delta' && ev.delta.type === 'text_delta') parser.push(ev.delta.text);
   parser.end();
   return (await stream.finalMessage()).usage;

@@ -399,6 +399,12 @@ const moves = {
     l.style.left = best.x + 'px'; l.style.top = best.y + 'px';
     await tween(320, (t) => { l.style.opacity = t; });
   },
+  async pulse({ id, color = 'yellow' }) {             // a soft ring breathes round a place until the person acts; returns at once
+    const el = resolve(id), c = col(color); if (!el) throw new Error('pulse: nothing on stage is called ' + id);
+    const b = el.getBoundingClientRect(), ring = svg('rect', { x: b.left - 7, y: b.top - 7, width: b.width + 14, height: b.height + 14, rx: 10, fill: 'none', stroke: c, 'stroke-width': 2.5 });
+    const breathe = () => { if (!ring.isConnected) return; tween(1100, (t) => { const k = thereAndBack(t); ring.setAttribute('stroke-opacity', (.35 + .65 * k).toFixed(3)); ring.setAttribute('stroke-width', (2 + 2 * k).toFixed(2)); }, linear).then(breathe); };
+    breathe();
+  },
   async diagram(m) { const f = diagrams[m.type]; if (!f) throw new Error('unknown diagram ' + m.type); await f(m); },
   async spotlight({ id }) {                           // darken everything but one place; the hole glides from the last place to this one
     const el = resolve(id); if (!el) throw new Error('spotlight: nothing on stage is called ' + id);
@@ -580,6 +586,18 @@ window.run = async (script, { manual = false, gap = 260 } = {}) => {
   } catch (e) { stage.error = String(e && e.stack || e); }
   if (!stage.restored) { clock.rate = 1.6; try { await moves.restore(); } catch (e) { stage.error = stage.error || String(e); } }
   clock.rate = 1; stage.done = true; return window.state();
+};
+// Guided mode: the person acted, so the guidance for that step goes away at once, including any of its moves still queued.
+window.clearNow = () => {
+  feedQ.items.length = 0;
+  for (const e of [...layer.querySelectorAll('.marker, .note, .arrow-label, #ghost-cursor, .anchor'), ...ink.children, ...$('links').children]) {
+    const o = parseFloat(getComputedStyle(e).opacity) || 1; tween(140, (t) => { e.style.opacity = o * (1 - t); }).then(() => e.remove());
+  }
+  const hole = $('spot-hole'), shade = $('spot-shade'); if (hole) { hole.setAttribute('width', 0); hole.setAttribute('height', 0); } if (shade) shade.setAttribute('opacity', .55);
+  stage.spot = null; stage.cursorAt = null; const c = $('caption'); c.textContent = ''; c.style.opacity = 0;
+};
+window.thinking = (on) => {                           // a quiet sign that the next step is being worked out
+  const c = $('caption'); if (on) { c.textContent = '…'; c.style.opacity = .7; c.style.transform = ''; } else if (c.textContent === '…') { c.textContent = ''; c.style.opacity = 0; }
 };
 window.abort = () => { if (stage.done) return; stage.aborted = true; clock.rate = 8; if (stage.release) stage.release(); wakeFeed(); };   // finish the current move fast, then restore
 

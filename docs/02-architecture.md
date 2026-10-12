@@ -136,7 +136,18 @@ Casting's first line chooses the mode for each question.
 
 Point mode runs on the **live screen**. The stage window is transparent; once Casting has found the targets from the screenshot, `golive` fades the screenshot out and the app calls `setIgnoreMouseEvents(true, { forward: true })`, so every click goes through to the apps underneath while the guidance stays on top, the way Clicky works. Lift mode keeps the frozen screenshot over a black backdrop. Esc is a global shortcut, so it works whichever window has focus.
 
-Limit: once the person clicks and a menu opens, the guidance does not know; it keeps pointing where it pointed. A feature inside a closed menu is not on the screenshot either, so the Director points at what opens it and says what to look for next. A guided mode that waits for the click and looks again would remove this limit.
+**Guided mode** (`prototype/guide.js`) runs every point-mode question, one step at a time:
+
+1. The first guide call starts in parallel with Casting. Whichever mode Casting picks, the other call is cancelled, so a how-to question waits no longer than an explanation.
+2. Each step spotlights one control, pins its number, and a soft ring breathes round it while the narration says what to do and why.
+3. `uiohook-napi` reports the person's clicks (and Enter) even though they go to other apps. The moment they act, `clearNow()` removes that step's guidance, including any of its moves still queued.
+4. After 0.3 s for menus to open, the screen is captured again. The stage has content protection on during guided mode, so the capture sees the app and not the guidance.
+5. One guide call sees the new screen, the goal and the steps done, and returns the next action, `done`, or `stuck`. If the person clicked somewhere unexpected, it works from where they are now.
+6. On `done` it confirms in one line and the stage closes by itself.
+
+Measured on the settings sequence (screens 17, 17b, 17c): the next step is on screen about 1.8 to 2 s after a click (guide call about 1.2 s, capture about 0.3 s, settle 0.3 s). Thinking on or off made no difference to speed, so it stays on.
+
+Not yet checked: click coordinates from uiohook at display scaling above 100%. A feature inside a closed menu is now handled step by step: so the Director points at what opens it and says what to look for next. A guided mode that waits for the click and looks again would remove this limit.
 
 ## The director
 
